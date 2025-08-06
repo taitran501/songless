@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
         break // No more tracks
       }
 
+      console.log(`Fetched ${tracks.length} tracks, offset: ${offset}`)
       allTracks.push(...tracks)
       offset += limit
 
@@ -57,14 +58,26 @@ export async function GET(request: NextRequest) {
     }
 
     const filteredTracks = allTracks
-      .filter((item: any) => item.track)  // chỉ đảm bảo có track obj
-      .map((item: any) => ({
-        uri: item.track.uri,
-        name: item.track.name,
-        duration_ms: item.track.duration_ms,
-        albumImage: item.track.album?.images?.[0]?.url ?? null,
-      }))
+      .filter((item: any) => {
+        // Filter out items without track or with null track
+        return item && item.track && item.track.uri && item.track.name
+      })
+      .map((item: any) => {
+        try {
+          return {
+            uri: item.track.uri,
+            name: item.track.name,
+            duration_ms: item.track.duration_ms || 0,
+            albumImage: item.track.album?.images?.[0]?.url ?? null,
+          }
+        } catch (error) {
+          console.error("Error mapping track:", error, item)
+          return null
+        }
+      })
+      .filter((track: any) => track !== null) // Remove any null tracks from mapping errors
 
+    console.log(`Returning ${filteredTracks.length} valid tracks`)
     return NextResponse.json(filteredTracks)
   } catch (error) {
     console.error("Error fetching playlist:", error)
