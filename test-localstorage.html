@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test localStorage</title>
+</head>
+<body>
+    <h1>Test localStorage</h1>
+    <button onclick="testSet()">Set tracks</button>
+    <button onclick="testGet()">Get tracks</button>
+    <button onclick="testClear()">Clear tracks</button>
+    <div id="output"></div>
+
+    <script>
+        function testSet() {
+            const testTracks = [
+                { uri: "spotify:track:123", name: "Test Song 1", duration_ms: 180000 },
+                { uri: "spotify:track:456", name: "Test Song 2", duration_ms: 200000 }
+            ];
+            localStorage.setItem("game_tracks", JSON.stringify(testTracks));
+            document.getElementById('output').innerHTML = "Tracks saved: " + testTracks.length;
+        }
+
+        function testGet() {
+            const saved = localStorage.getItem("game_tracks");
+            if (saved) {
+                const tracks = JSON.parse(saved);
+                document.getElementById('output').innerHTML = "Tracks loaded: " + tracks.length + "<br>" + JSON.stringify(tracks, null, 2);
+            } else {
+                document.getElementById('output').innerHTML = "No tracks found";
+            }
+        }
+
+        function testClear() {
+            localStorage.removeItem("game_tracks");
+            document.getElementById('output').innerHTML = "Tracks cleared";
+        }
+    </script>
+</body>
+</html> 

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Spotify Web API</title>
+</head>
+<body>
+    <h1>Test Spotify Web API</h1>
+    <div>
+        <label>Access Token:</label><br>
+        <input type="text" id="accessToken" style="width: 400px;" placeholder="Paste your access token here">
+    </div>
+    <div>
+        <label>Device ID:</label><br>
+        <input type="text" id="deviceId" style="width: 400px;" placeholder="Paste your device ID here">
+    </div>
+    <div>
+        <label>Track URI:</label><br>
+        <input type="text" id="trackUri" style="width: 400px;" placeholder="spotify:track:..." value="spotify:track:4iV5W9uYEdYUVa79Axb7Rh">
+    </div>
+    <br>
+    <button onclick="testPlay()">Test Play Track</button>
+    <button onclick="testPause()">Test Pause</button>
+    <button onclick="testResume()">Test Resume</button>
+    <div id="output"></div>
+
+    <script>
+        async function testPlay() {
+            const accessToken = document.getElementById('accessToken').value;
+            const deviceId = document.getElementById('deviceId').value;
+            const trackUri = document.getElementById('trackUri').value;
+            
+            if (!accessToken || !deviceId || !trackUri) {
+                document.getElementById('output').innerHTML = "Please fill in all fields";
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        uris: [trackUri],
+                        position_ms: 0,
+                    }),
+                });
+
+                document.getElementById('output').innerHTML = `
+                    <h3>Play Response:</h3>
+                    <p>Status: ${response.status}</p>
+                    <p>Status Text: ${response.statusText}</p>
+                    <p>Headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}</p>
+                `;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        async function testPause() {
+            const accessToken = document.getElementById('accessToken').value;
+            const deviceId = document.getElementById('deviceId').value;
+            
+            if (!accessToken || !deviceId) {
+                document.getElementById('output').innerHTML = "Please fill in access token and device ID";
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.spotify.com/v1/me/player/pause?device_id=${deviceId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                    },
+                });
+
+                document.getElementById('output').innerHTML = `
+                    <h3>Pause Response:</h3>
+                    <p>Status: ${response.status}</p>
+                    <p>Status Text: ${response.statusText}</p>
+                `;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `Error: ${error.message}`;
+            }
+        }
+
+        async function testResume() {
+            const accessToken = document.getElementById('accessToken').value;
+            const deviceId = document.getElementById('deviceId').value;
+            
+            if (!accessToken || !deviceId) {
+                document.getElementById('output').innerHTML = "Please fill in access token and device ID";
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                    },
+                });
+
+                document.getElementById('output').innerHTML = `
+                    <h3>Resume Response:</h3>
+                    <p>Status: ${response.status}</p>
+                    <p>Status Text: ${response.statusText}</p>
+                `;
+            } catch (error) {
+                document.getElementById('output').innerHTML = `Error: ${error.message}`;
+            }
+        }
+    </script>
+</body>
+</html> 
