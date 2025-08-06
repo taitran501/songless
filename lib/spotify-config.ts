@@ -1,6 +1,6 @@
 // Spotify OAuth Configuration
 export const SPOTIFY_CONFIG = {
-  CLIENT_ID: process.env.SPOTIFY_CLIENT_ID || "",
+  CLIENT_ID: process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID || process.env.SPOTIFY_CLIENT_ID || "",
   CLIENT_SECRET: process.env.SPOTIFY_CLIENT_SECRET || "",
   REDIRECT_URI: process.env.SPOTIFY_REDIRECT_URI || "http://localhost:3000/api/spotify/callback",
   SCOPES: [

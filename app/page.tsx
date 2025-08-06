@@ -2,36 +2,69 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { getSpotifyAuthUrl, isSpotifyConfigured } from "@/lib/spotify-config"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if Spotify is configured
-    if (!isSpotifyConfigured()) {
-      setError("Spotify configuration is missing. Please check environment variables.")
-      return
+    const initializeAuth = async () => {
+      try {
+        // Check if user already has access token
+        const accessToken = localStorage.getItem("spotify_access_token")
+        if (accessToken) {
+          router.push("/playlist")
+          return
+        }
+
+        // Get Spotify config from API
+        const response = await fetch('/api/spotify/config')
+        if (!response.ok) {
+          throw new Error('Failed to load Spotify configuration')
+        }
+
+        const config = await response.json()
+        
+        if (!config.clientId) {
+          setError("SPOTIFY_CLIENT_ID environment variable is not set")
+          setLoading(false)
+          return
+        }
+
+        // Generate auth URL
+        const params = new URLSearchParams({
+          response_type: "code",
+          client_id: config.clientId,
+          redirect_uri: config.redirectUri,
+          scope: config.scopes,
+          state: "STATE"
+        })
+        
+        const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`
+        window.location.href = authUrl
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Failed to initialize Spotify auth")
+        setLoading(false)
+      }
     }
 
-    // Check if user already has access token
-    const accessToken = localStorage.getItem("spotify_access_token")
-    if (accessToken) {
-      router.push("/playlist")
-      return
-    }
-
-    try {
-      // Redirect to Spotify authorization
-      const authUrl = getSpotifyAuthUrl()
-      window.location.href = authUrl
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to initialize Spotify auth")
-    }
+    initializeAuth()
   }, [router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-white animate-spin mx-auto mb-4" />
+          <h1 className="text-4xl font-bold text-white mb-4">SonglessUnlimited</h1>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (error) {
     return (
