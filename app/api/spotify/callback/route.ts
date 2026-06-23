@@ -3,11 +3,12 @@ import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
 
 export async function POST(request: NextRequest) {
   try {
-    const { code } = await request.json()
+    const { code, redirect_uri } = await request.json()
     
     console.log("Callback received code:", code)
     console.log("Client ID:", SPOTIFY_CONFIG.CLIENT_ID)
-    console.log("Redirect URI:", SPOTIFY_CONFIG.REDIRECT_URI)
+    console.log("Passed Redirect URI:", redirect_uri)
+    console.log("Fallback Redirect URI:", SPOTIFY_CONFIG.REDIRECT_URI)
 
     const response = await fetch(SPOTIFY_ENDPOINTS.TOKEN, {
       method: "POST",
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
       body: new URLSearchParams({
         grant_type: "authorization_code",
         code,
-        redirect_uri: SPOTIFY_CONFIG.REDIRECT_URI,
+        redirect_uri: redirect_uri || SPOTIFY_CONFIG.REDIRECT_URI,
       }),
     })
 
