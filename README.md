@@ -1,4 +1,4 @@
-# SonglessUnlimited
+# Songless
 
 A Spotify-powered music guessing game. Log in with your Spotify account, load any playlist, and try to name each song from progressively longer audio clips.
 
@@ -8,10 +8,12 @@ Inspired by games like [Heardle](https://www.heardle.app/) and Songless — but 
 
 - **Spotify OAuth** — sign in with your Spotify account
 - **Any playlist** — paste a playlist URL or ID to play your own library
+- **Recent Playlists** — remembers the last 6 playlists loaded for quick access
 - **Six-stage guessing** — hear more of the song with each stage (0.5s → 15s)
 - **Shuffle mode** — randomize track order before starting
 - **Playback controls** — play, pause, skip stages, and submit guesses at any time
-- **No backend database** — tokens and playlist data are stored in the browser (`localStorage`)
+- **Autologin & State Persistence** — saves session tokens and in-progress game states in the browser (`localStorage`)
+- **Vercel Deploy Ready** — optimized for standard cloud deployment with dynamic redirect URI resolution
 
 ## Requirements
 
@@ -42,14 +44,14 @@ Inspired by games like [Heardle](https://www.heardle.app/) and Songless — but 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/songless.git
+git clone https://github.com/taitran501/songless.git
 cd songless
 npm install
 ```
 
 ### 2. Configure environment variables
 
-Copy the example env file and fill in your Spotify credentials:
+Create a `.env.local` file and fill in your Spotify credentials:
 
 ```bash
 cp env.example .env.local
@@ -59,19 +61,17 @@ cp env.example .env.local
 |----------|-------------|
 | `SPOTIFY_CLIENT_ID` | Client ID from the Spotify Developer Dashboard |
 | `SPOTIFY_CLIENT_SECRET` | Client secret from the Spotify Developer Dashboard |
-| `SPOTIFY_REDIRECT_URI` | OAuth redirect URL (see below) |
+| `SPOTIFY_REDIRECT_URI` | (Optional) Explicit OAuth redirect URL |
 
-For local development, set the redirect URI to the callback page:
+*Note: If `SPOTIFY_REDIRECT_URI` is omitted, the app dynamically constructs the redirect URI matching the current domain (e.g. `http://localhost:3000/callback` or `https://your-domain.vercel.app/callback`).*
 
-```
-SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
-```
-
-### 3. Set up Spotify
+### 3. Set up Spotify Developer App
 
 1. Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
-2. Under **Redirect URIs**, add the same URL as `SPOTIFY_REDIRECT_URI` (e.g. `http://localhost:3000/callback`).
-3. Copy the **Client ID** and **Client Secret** into `.env.local`.
+2. Under **Redirect URIs**, add the callback URL(s) you intend to use:
+   - For local development: `http://localhost:3000/callback`
+   - For production: `https://your-domain.vercel.app/callback`
+3. Copy the **Client ID** and **Client Secret** into your env configuration.
 
 The app requests these scopes: `streaming`, `user-read-email`, `user-read-private`, `user-modify-playback-state`, `user-read-playback-state`, `playlist-read-private`, `playlist-read-collaborative`.
 
@@ -83,22 +83,15 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Verify your environment variables:
-
-```bash
-npm run check-env
-```
-
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start the development server |
-| `npm run dev:network` | Dev server accessible on the local network |
 | `npm run build` | Production build |
 | `npm run start` | Start the production server |
 | `npm run lint` | Run ESLint |
-| `npm run check-env` | Validate required environment variables |
+| `npm run test:e2e` | Run Playwright E2E tests |
 
 ## Project structure
 
@@ -108,28 +101,25 @@ app/
   callback/page.tsx     # OAuth callback — exchanges code for tokens
   playlist/page.tsx     # Load a playlist and start the game
   game/page.tsx         # Main game UI and Spotify Web Playback SDK
-  api/spotify/          # Server routes (config, callback, playlist, refresh)
+  api/spotify/          # Server API routes (config, callback, playlist, refresh)
 components/
   game-modal.tsx        # Correct / game-over dialog
 hooks/
-  use-spotify-auth.ts   # Token storage and refresh
+  use-spotify-auth.ts   # Token storage, auto-login and session refresh
   tracks-store.tsx      # Playlist state (React context + localStorage)
 lib/
-  spotify-config.ts     # Spotify OAuth configuration
-  utils.ts              # Shared helpers (e.g. token refresh)
+  spotify-config.ts     # Spotify API config constants
+  utils.ts              # Styling helpers
+tests/
+  e2e/songless.spec.ts  # Playwright E2E integration test suite
 ```
 
 ## Deployment
 
-The app is designed for [Vercel](https://vercel.com). Set the same three environment variables in the Vercel dashboard, using your production callback URL:
+The app is designed to run seamlessly on [Vercel](https://vercel.com).
+Set the environment variables `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in the Vercel dashboard.
 
-```
-SPOTIFY_REDIRECT_URI=https://your-domain.vercel.app/callback
-```
-
-Add that URL to your Spotify app's Redirect URIs as well.
-
-See [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) for a step-by-step Vercel deployment guide.
+Ensure you whitelist your Vercel deployment's domains in your Spotify Developer App settings (e.g. `https://your-domain.vercel.app/callback`).
 
 ## Tech stack
 
@@ -139,25 +129,18 @@ See [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) for a step-by-step Vercel deployment gu
 - [Tailwind CSS 4](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/) + [Radix UI](https://www.radix-ui.com/)
 - [Spotify Web API](https://developer.spotify.com/documentation/web-api) & [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk)
+- [Playwright](https://playwright.dev/) (E2E Testing)
 
 ## Troubleshooting
 
 | Issue | What to check |
 |-------|---------------|
-| OAuth redirect error | `SPOTIFY_REDIRECT_URI` must exactly match a Redirect URI in the Spotify Dashboard |
-| "Configuration Error" on login | `SPOTIFY_CLIENT_ID` is missing or not loaded |
-| Playback doesn't work | Spotify Premium is required; free accounts cannot use the Web Playback SDK |
+| OAuth redirect error | Check Spotify App settings; the domain you are visiting must have its `/callback` exact match whitelisted |
+| "Configuration Error" on login | `SPOTIFY_CLIENT_ID` is missing or not loaded from environment variables |
+| Playback doesn't work (403) | Spotify Premium is required. Make sure you also have an active Spotify instance (Desktop or Mobile app) open on the same account. |
 | Redirected back to playlist | No tracks loaded — load a playlist first; check `game_tracks` in `localStorage` |
-| Token expired | Clear storage and sign in again: `localStorage.clear()` in the browser console |
-
-For detailed debugging steps and expected console log flow, see [test-flow.md](./test-flow.md).
-
-## Related docs
-
-- [DEPLOY_GUIDE.md](./DEPLOY_GUIDE.md) — Vercel deployment
-- [test-flow.md](./test-flow.md) — Game rules and debugging checklist
-- [SPOTIFY_OAUTH_UPDATE.md](./SPOTIFY_OAUTH_UPDATE.md) — OAuth configuration notes
 
 ## License
 
 Private project — all rights reserved.
+
