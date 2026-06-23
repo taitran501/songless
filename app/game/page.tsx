@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Play, Loader2, X } from "lucide-react"
+import { Play, Loader2, X, Music, AlertTriangle, Smartphone, Sparkles, ExternalLink } from "lucide-react"
 import { GameModal } from "@/components/game-modal"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
@@ -844,42 +844,63 @@ export default function GamePage() {
 
   if (!isPremium) {
     return (
-      <div className="min-h-screen bg-black p-4">
-        <div className="max-w-2xl mx-auto">
-          <h1 className="text-4xl font-bold text-white text-center mb-8">SonglessUnlimited</h1>
-          
-          <div className="bg-yellow-900/20 border border-yellow-600 rounded-lg p-6 mb-6">
-            <h2 className="text-yellow-400 text-xl font-semibold mb-2">⚠️ Premium Required</h2>
-            <p className="text-yellow-200 mb-4">
-              Spotify Premium subscription is required to play SonglessUnlimited with audio playback.
-            </p>
-            <p className="text-gray-300 text-sm">
-              You can browse through the playlist here, but the guessing game stays spoiler-free until playback is available.
+      <div className="min-h-screen bg-black p-4 flex items-center justify-center">
+        <div className="max-w-md w-full bg-gray-950 border border-gray-800 rounded-2xl p-6 shadow-2xl space-y-6">
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/20 rounded-full flex items-center justify-center mx-auto text-amber-500">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <h2 className="text-white text-xl font-bold">Spotify Premium Required</h2>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              Spotify requires a **Premium account** to stream tracks directly in third-party web apps using the SDK.
             </p>
           </div>
 
-          {tracks.length > 0 && currentIndex < tracks.length && (
-            <div className="bg-gray-900 border-gray-700 rounded-lg p-6">
-              <h3 className="text-white text-lg font-semibold mb-4">Track {currentIndex + 1} of {tracks.length}</h3>
-              <div className="text-center">
-                <p className="text-gray-400 mb-4">
-                  Audio playback is unavailable for this account. You can move through the playlist without revealing song names.
-                </p>
-                <Button 
-                  onClick={() => {
-                    if (currentIndex < tracks.length - 1) {
-                      setCurrentIndex(currentIndex + 1)
-                    } else {
-                      router.push("/playlist")
-                    }
-                  }}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Next Song
-                </Button>
+          <div className="space-y-4">
+            <div className="bg-gray-900/60 p-4 rounded-xl border border-gray-800/80 space-y-2">
+              <div className="flex items-center space-x-2 text-green-400">
+                <Sparkles className="w-4 h-4" />
+                <span className="font-semibold text-xs uppercase tracking-wider">How Web SDK Works</span>
               </div>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                The game relies on the official Spotify Web Playback SDK to play specific song segments (e.g., 0.5s, 1s) seamlessly. Spotify restricts this service to Premium members.
+              </p>
             </div>
-          )}
+
+            <div className="bg-gray-900/60 p-4 rounded-xl border border-gray-800/80 space-y-2">
+              <div className="flex items-center space-x-2 text-green-400">
+                <Smartphone className="w-4 h-4" />
+                <span className="font-semibold text-xs uppercase tracking-wider">Need Premium?</span>
+              </div>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                You can still browse and guess songs, but audio playback will remain disabled. Consider upgrading your Spotify account if you want the full game experience.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 pt-2">
+            <Button
+              onClick={() => router.push("/playlist")}
+              className="bg-green-600 hover:bg-green-700 w-full"
+            >
+              Back to Playlists
+            </Button>
+            {tracks.length > 0 && currentIndex < tracks.length && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (currentIndex < tracks.length - 1) {
+                    setCurrentIndex(currentIndex + 1)
+                  } else {
+                    router.push("/playlist")
+                  }
+                }}
+                className="bg-gray-900 hover:bg-gray-800 text-white border-gray-800 w-full"
+              >
+                Skip Track ({currentIndex + 1}/{tracks.length})
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     )

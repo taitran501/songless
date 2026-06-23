@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
-import { Shuffle, Play } from "lucide-react"
+import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert } from "lucide-react"
 
 interface Track {
   uri: string
@@ -214,6 +214,54 @@ export default function PlaylistPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Setup & Instructions Guide */}
+        <Card className="bg-gray-950 border border-gray-800 shadow-xl overflow-hidden mt-6">
+          <div className="bg-gradient-to-r from-green-500/10 via-emerald-500/5 to-transparent p-4 border-b border-gray-800">
+            <div className="flex items-center space-x-2">
+              <Info className="w-5 h-5 text-green-400" />
+              <h2 className="text-white font-semibold text-base">Spotify Connection & Game Setup</h2>
+            </div>
+          </div>
+          <CardContent className="p-5 space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Requirement 1 */}
+              <div className="bg-gray-900/60 p-4 rounded-lg border border-gray-800/80 space-y-2">
+                <div className="flex items-center space-x-2 text-green-400">
+                  <Music className="w-4 h-4" />
+                  <span className="font-semibold text-xs uppercase tracking-wider">Spotify Premium</span>
+                </div>
+                <h3 className="text-white font-medium text-sm">Account Requirement</h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Spotify Premium is **strictly required**. Free accounts are blocked by Spotify from using the Web Playback SDK for full-track streaming.
+                </p>
+              </div>
+
+              {/* Requirement 2 */}
+              <div className="bg-gray-900/60 p-4 rounded-lg border border-gray-800/80 space-y-2">
+                <div className="flex items-center space-x-2 text-green-400">
+                  <Smartphone className="w-4 h-4" />
+                  <span className="font-semibold text-xs uppercase tracking-wider">Active Device</span>
+                </div>
+                <h3 className="text-white font-medium text-sm">Open Spotify App</h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Keep your Spotify app (desktop/mobile) **open and active**. Play any song on your app first for 2 seconds to make sure it is in an active state.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-950/20 border border-amber-900/50 rounded-lg p-3.5 flex items-start space-x-3">
+              <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-amber-400 font-medium text-xs">Troubleshooting 403 / No Active Device Error</h4>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  If the game shows a "No Active Device" warning, simply open your Spotify App, press **Play** on any track, then **Pause** it, and return to the game page. The SDK will automatically locate your session!
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
 
         {recentPlaylists.length > 0 && (
           <Card className="bg-gray-900 border-gray-700 mt-6">
