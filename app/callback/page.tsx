@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 
-export default function CallbackPage() {
+function CallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { setTokens } = useSpotifyAuth()
@@ -38,7 +38,13 @@ export default function CallbackPage() {
         },
         body: JSON.stringify({ code }),
       })
-        .then((response) => response.json())
+        .then(async (response) => {
+          const data = await response.json()
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to exchange Spotify code")
+          }
+          return data
+        })
         .then((data) => {
           if (data.access_token) {
             console.log("Token received, redirecting to playlist...")
@@ -67,5 +73,20 @@ export default function CallbackPage() {
         <p className="text-gray-400">Processing authentication...</p>
       </div>
     </div>
+  )
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-white mb-4">SonglessUnlimited</h1>
+          <p className="text-gray-400">Processing authentication...</p>
+        </div>
+      </div>
+    }>
+      <CallbackContent />
+    </Suspense>
   )
 }

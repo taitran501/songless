@@ -4,11 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
-import { Play, Pause, ArrowRight, Loader2, X } from "lucide-react"
+import { Play, Loader2, X } from "lucide-react"
 import { GameModal } from "@/components/game-modal"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
+import { useToast } from "@/hooks/use-toast"
 
 declare global {
   interface Window {
@@ -43,15 +43,228 @@ export default function GamePage() {
   const [modalContent, setModalContent] = useState<{ correct: boolean; answer: string }>({ correct: false, answer: "" })
   const [isLoading, setIsLoading] = useState(true)
   const [progress, setProgress] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
   const router = useRouter()
   const { tracks, isLoading: tracksLoading } = useTracks()
-  const { accessToken, ensureValidToken, isLoading: authLoading } = useSpotifyAuth()
+  const { accessToken, ensureValidToken, isLoading: authLoading, logout } = useSpotifyAuth()
   const [isPremium, setIsPremium] = useState(true)
   const [premiumCheckDone, setPremiumCheckDone] = useState(false)
+
+  const { toast } = useToast()
+  const [guesses, setGuesses] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [selectedUri, setSelectedUri] = useState<string | null>(null)
+  const searchContainerRef = useRef<HTMLDivElement>(null)
 
   const stageDurations = [500, 1000, 2000, 4000, 8000, 15000] // 0.5s, 1s, 2s, 4s, 8s, 15s
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleSessionExpired = useCallback((message: string) => {
+    logout()
+    localStorage.removeItem("game_tracks")
+    toast({
+      title: "Session Expired",
+      description: message,
+      variant: "destructive"
+    })
+    router.replace("/")
+  }, [logout, router, toast])
+
+  const clearPlaybackTimers = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+      timeoutRef.current = null
+    }
+
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current)
+      progressIntervalRef.current = null
+    }
+  }, [])
+
+  const pauseCurrentPlayback = useCallback(async () => {
+    if (!player) return
+
+    try {
+      await player.pause()
+    } catch (error) {
+      console.error("Error pausing current playback via SDK:", error)
+    }
+
+    // Secondary pause attempt 200ms later to handle SDK buffering race conditions
+    setTimeout(async () => {
+      try {
+        const state = await player.getCurrentState()
+        if (state && !state.paused) {
+          console.log("⚠️ Spotify player still playing, triggering secondary pause")
+          await player.pause()
+        }
+      } catch (e) {
+        console.error("Error in secondary pause check:", e)
+      }
+    }, 200)
+
+    // Call Web API pause as absolute fallback
+    try {
+      const validToken = await ensureValidToken()
+      if (validToken) {
+        await fetch("https://api.spotify.com/v1/me/player/pause", {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${validToken}`,
+          },
+        })
+      }
+    } catch (error) {
+      console.error("Error pausing current playback via API:", error)
+    }
+  }, [player, deviceId, ensureValidToken])
+
+  const startProgressTimer = useCallback((activePlayer: SpotifyPlayer, duration: number, initialElapsed = 0) => {
+    clearPlaybackTimers()
+
+    const startTime = Date.now() - initialElapsed
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const progressPercent = Math.min((elapsed / duration) * 100, 100)
+      setProgress(progressPercent)
+    }, 50)
+
+    const remainingDuration = Math.max(duration - initialElapsed, 0)
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        await pauseCurrentPlayback()
+        setIsPlaying(false)
+        setIsPaused(false)
+        clearPlaybackTimers()
+        setProgress(100)
+      } catch (error) {
+        console.error("Error pausing track:", error)
+        setIsPlaying(false)
+      }
+    }, remainingDuration)
+  }, [clearPlaybackTimers, pauseCurrentPlayback])
+
+  // Click outside to close autocomplete suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Clean track names for loose string comparison
+  const cleanTrackName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/\s*\(feat\..*?\)/g, '')
+      .replace(/\s*\(with.*?\)/g, '')
+      .replace(/\s*-\s*remastered.*/g, '')
+      .replace(/\s*-\s*radio edit.*/g, '')
+      .replace(/\s*\(radio edit\)/g, '')
+      .replace(/[^a-z0-9\s]/g, '')
+      .trim()
+  }
+
+  // Fetch track search suggestions from Spotify Search API
+  const fetchSearchSuggestions = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSuggestions([])
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const validToken = await ensureValidToken()
+      if (!validToken) return
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`,
+        {
+          headers: {
+            Authorization: `Bearer ${validToken}`,
+          },
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        const items = data.tracks?.items || []
+        setSuggestions(
+          items.map((item: any) => ({
+            uri: item.uri,
+            name: item.name,
+            artists: item.artists.map((a: any) => a.name).join(", "),
+            albumImage: item.album?.images?.[2]?.url || item.album?.images?.[0]?.url || null,
+          }))
+        )
+      }
+    } catch (error) {
+      console.error("Error fetching search suggestions:", error)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [ensureValidToken])
+
+  // Debounced query trigger
+  useEffect(() => {
+    if (selectedUri) {
+      return
+    }
+
+    const delayDebounceFn = setTimeout(() => {
+      if (guess.trim().length > 1) {
+        void fetchSearchSuggestions(guess)
+        setShowSuggestions(true)
+      } else {
+        setSuggestions([])
+        setShowSuggestions(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(delayDebounceFn)
+  }, [guess, selectedUri, fetchSearchSuggestions])
+
+  // Restore game state from localStorage
+  useEffect(() => {
+    if (tracks.length === 0 || tracksLoading) return
+
+    const playlistId = localStorage.getItem("current_playlist_id") || "default"
+    const savedState = localStorage.getItem(`songless_state_${playlistId}`)
+    if (savedState) {
+      try {
+        const parsed = JSON.parse(savedState)
+        if (parsed.currentIndex < tracks.length) {
+          setCurrentIndex(parsed.currentIndex)
+          setCurrentStage(parsed.currentStage)
+          setGuesses(parsed.guesses || [])
+          console.log("🎮 Restored game state:", parsed)
+        }
+      } catch (e) {
+        console.error("Error parsing saved game state:", e)
+      }
+    }
+  }, [tracks, tracksLoading])
+
+  // Save game state to localStorage
+  useEffect(() => {
+    if (tracks.length === 0 || tracksLoading) return
+    const playlistId = localStorage.getItem("current_playlist_id") || "default"
+    const stateToSave = {
+      currentIndex,
+      currentStage,
+      guesses
+    }
+    localStorage.setItem(`songless_state_${playlistId}`, JSON.stringify(stateToSave))
+  }, [currentIndex, currentStage, guesses, tracks, tracksLoading])
+
+
 
   // Effect 1: Check authentication and redirect if needed
   useEffect(() => {
@@ -95,16 +308,29 @@ export default function GamePage() {
     const checkPremiumStatus = async () => {
       try {
         console.log("Checking Premium status...")
+
+        const validToken = await ensureValidToken()
+        if (!validToken) {
+          handleSessionExpired("Your Spotify session expired. Please log in again.")
+          return
+        }
         
         // Try to access player endpoint - Premium users can access this
         const playerResponse = await fetch("https://api.spotify.com/v1/me/player", {
           headers: {
-            "Authorization": `Bearer ${accessToken}`
+            "Authorization": `Bearer ${validToken}`
           }
         })
-        
-        // If we can access player endpoint, user likely has Premium
-        const isPremiumUser = playerResponse.status !== 403
+
+        if (playerResponse.status === 401) {
+          handleSessionExpired("Your Spotify session expired. Please log in again.")
+          return
+        }
+
+        const isPremiumUser = playerResponse.ok
+          ? true
+          : playerResponse.status === 403
+
         console.log("Player endpoint status:", playerResponse.status)
         console.log("Is Premium (based on player access):", isPremiumUser)
         setIsPremium(isPremiumUser)
@@ -117,10 +343,10 @@ export default function GamePage() {
       }
     }
 
-    if (accessToken && !authLoading) {
+    if (accessToken && !authLoading && !premiumCheckDone) {
       checkPremiumStatus()
     }
-  }, [accessToken, authLoading])
+  }, [accessToken, authLoading, premiumCheckDone, ensureValidToken, handleSessionExpired])
 
   // Effect 3: Initialize SDK only for Premium users (separated from Premium check)
   useEffect(() => {
@@ -149,7 +375,11 @@ export default function GamePage() {
     
     script.onerror = () => {
       console.error("Failed to load Spotify Web Playback SDK")
-      alert("Failed to load Spotify player. Please refresh the page.")
+      toast({
+        title: "SDK Load Failed",
+        description: "Failed to load Spotify player. Please refresh the page.",
+        variant: "destructive"
+      })
     }
     
     document.body.appendChild(script)
@@ -172,9 +402,11 @@ export default function GamePage() {
                 cb(freshToken)
               } else {
                 console.error("No valid token available")
+                handleSessionExpired("Your Spotify session expired. Please log in again.")
               }
             } catch (error) {
               console.error("Error getting valid token:", error)
+              handleSessionExpired("Unable to refresh your Spotify session. Please log in again.")
             }
           },
           volume: 0.5,
@@ -188,13 +420,18 @@ export default function GamePage() {
           setPlayer(spotifyPlayer)
           
           // Transfer playback to our device
-          if (accessToken) {
+          void ensureValidToken().then((freshToken) => {
+            if (!freshToken) {
+              handleSessionExpired("Your Spotify session expired. Please log in again.")
+              return
+            }
+
             console.log("Transferring playback to device...")
             fetch("https://api.spotify.com/v1/me/player", {
               method: "PUT",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${accessToken}`,
+                Authorization: `Bearer ${freshToken}`,
               },
               body: JSON.stringify({
                 device_ids: [device_id],
@@ -205,7 +442,7 @@ export default function GamePage() {
             }).catch(error => {
               console.error("Error transferring playback:", error)
             })
-          }
+          })
         })
 
         spotifyPlayer.addListener("not_ready", ({ device_id }: { device_id: string }) => {
@@ -214,7 +451,11 @@ export default function GamePage() {
 
         spotifyPlayer.addListener("initialization_error", ({ message }: { message: string }) => {
           console.error("Initialization error:", message)
-          alert("Failed to initialize Spotify player. Please check your Spotify Premium subscription.")
+          toast({
+            title: "Player Initialization Error",
+            description: "Failed to initialize Spotify player. Please check your Spotify Premium subscription.",
+            variant: "destructive"
+          })
         })
 
         spotifyPlayer.addListener("authentication_error", ({ message }: { message: string }) => {
@@ -227,50 +468,67 @@ export default function GamePage() {
           console.error("=====================================")
           
           if (message.includes("expired")) {
-            alert("Token expired. Please login again.")
-            router.push("/playlist")
+            handleSessionExpired("Token expired. Please log in again.")
           } else {
-            alert("Authentication failed. Please login again.")
-            router.push("/playlist")
+            handleSessionExpired("Authentication failed. Please log in again.")
           }
         })
 
         spotifyPlayer.addListener("account_error", ({ message }: { message: string }) => {
           console.error("Account error:", message)
           if (message.includes("Premium")) {
-            alert("Spotify Premium subscription required for Web Playback SDK. Please upgrade to Premium to play games.")
+            toast({
+              title: "Spotify Premium Required",
+              description: "Spotify Premium subscription is required for the Web Playback SDK. Please upgrade to Premium to play.",
+              variant: "destructive"
+            })
           } else {
-            alert("Account error. Please check your Spotify account.")
+            toast({
+              title: "Account Error",
+              description: "Account error. Please check your Spotify account.",
+              variant: "destructive"
+            })
           }
           router.push("/playlist")
         })
 
         spotifyPlayer.addListener("playback_error", ({ message }: { message: string }) => {
           console.error("Playback error:", message)
+          toast({
+            title: "Playback Error",
+            description: `Spotify Player error: ${message}. If audio fails, try skipping or resuming the song.`,
+            variant: "destructive"
+          })
         })
 
         console.log("Connecting player...")
         spotifyPlayer.connect()
       } catch (error) {
         console.error("Error creating Spotify player:", error)
-        alert("Failed to create Spotify player. Please refresh the page.")
+        toast({
+          title: "Player Error",
+          description: "Failed to create Spotify player. Please refresh the page.",
+          variant: "destructive"
+        })
       }
     }
 
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current)
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+      clearPlaybackTimers()
     }
-  }, [premiumCheckDone, isPremium, player, accessToken, ensureValidToken, router])
+  }, [premiumCheckDone, isPremium, player, accessToken, ensureValidToken, handleSessionExpired, clearPlaybackTimers, router])
 
-  const playSegment = async () => {
+  const playSegment = async (positionMs: number | any = 0) => {
+    const startPosition = typeof positionMs === "number" ? positionMs : 0
+
     console.log("🎵 [PlaySegment] Starting...", {
       hasPlayer: !!player,
       hasDeviceId: !!deviceId,
       tracksLength: tracks.length,
       currentIndex,
       currentStage,
-      duration: stageDurations[currentStage]
+      duration: stageDurations[currentStage],
+      startPosition
     })
     
     if (!player || !deviceId || tracks.length === 0) {
@@ -282,52 +540,86 @@ export default function GamePage() {
     const duration = stageDurations[currentStage]
 
     try {
-      // Play the track using Spotify Web API
-      const playResponse = await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+      const validToken = await ensureValidToken()
+      if (!validToken) {
+        handleSessionExpired("Your Spotify session expired. Please log in again.")
+        return
+      }
+
+      clearPlaybackTimers()
+
+      // Step 1: Transfer playback to the SDK device to make it the active device
+      // This prevents 403 "No active device" errors
+      console.log("🎵 [PlaySegment] Transferring playback to SDK device:", deviceId)
+      await fetch("https://api.spotify.com/v1/me/player", {
         method: "PUT",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${validToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          uris: [currentTrack.uri],
-          position_ms: 0,
+          device_ids: [deviceId],
+          play: false, // don't auto-play yet, we'll send the specific track
         }),
       })
 
+      // Small delay to let Spotify process the device transfer
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Step 2: Play the specific track on the now-active SDK device
+      const doPlay = async (): Promise<Response> => {
+        return fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${validToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uris: [currentTrack.uri],
+            position_ms: startPosition,
+          }),
+        })
+      }
+
+      let playResponse = await doPlay()
+
+      // If 403 (device not active yet), wait and retry once
+      if (playResponse.status === 403) {
+        console.log("🎵 [PlaySegment] 403 received, retrying after 800ms...")
+        await new Promise(resolve => setTimeout(resolve, 800))
+        playResponse = await doPlay()
+      }
+
+      if (playResponse.status === 401) {
+        handleSessionExpired("Your Spotify session expired. Please log in again.")
+        return
+      }
+
       if (!playResponse.ok) {
-        throw new Error(`Failed to play track: ${playResponse.status}`)
+        if (playResponse.status === 429) {
+          toast({
+            title: "Rate Limit Exceeded",
+            description: "Spotify API rate limit exceeded. Please wait a moment and try again.",
+            variant: "destructive"
+          })
+        } else {
+          throw new Error(`Failed to play track: ${playResponse.status}`)
+        }
       }
 
       console.log("🎵 [PlaySegment] Play API call successful")
       setIsPlaying(true)
-      setProgress(0)
-
-      // Start progress tracking with smoother updates
-      const startTime = Date.now()
-      progressIntervalRef.current = setInterval(() => {
-        const elapsed = Date.now() - startTime
-        const progressPercent = Math.min((elapsed / duration) * 100, 100)
-        setProgress(progressPercent)
-      }, 50) // Update more frequently for smoother animation
-
-      // Pause after duration
-      timeoutRef.current = setTimeout(async () => {
-        try {
-          await player.pause()
-          setIsPlaying(false)
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current)
-          }
-          setProgress(100)
-        } catch (error) {
-          console.error("Error pausing track:", error)
-          setIsPlaying(false)
-        }
-      }, duration)
+      setIsPaused(false)
+      setProgress((startPosition / duration) * 100)
+      startProgressTimer(player, duration, startPosition)
     } catch (error) {
       console.error("Error playing track:", error)
       setIsPlaying(false)
+      toast({
+        title: "Playback Failed",
+        description: "Could not start audio playback. Ensure your Spotify Premium account is active and you have a stable network connection.",
+        variant: "destructive"
+      })
     }
   }
 
@@ -348,53 +640,59 @@ export default function GamePage() {
     if (!guess.trim() || tracks.length === 0) return
 
     const currentTrack = tracks[currentIndex]
-    const isCorrect = guess.toLowerCase().includes(currentTrack.name.toLowerCase()) ||
-                     currentTrack.name.toLowerCase().includes(guess.toLowerCase())
+    const cleanGuess = cleanTrackName(guess)
+    const cleanTarget = cleanTrackName(currentTrack.name)
 
-    // Clear any existing timeouts
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-    }
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current)
-    }
+    const isCorrect = (selectedUri && selectedUri === currentTrack.uri) ||
+                     cleanGuess.includes(cleanTarget) ||
+                     cleanTarget.includes(cleanGuess)
+
+    void pauseCurrentPlayback()
+    clearPlaybackTimers()
+
+    const newGuesses = [...guesses, guess]
+    setGuesses(newGuesses)
 
     if (isCorrect) {
       setModalContent({ correct: true, answer: currentTrack.name })
       setShowModal(true)
       setIsPlaying(false)
+      setIsPaused(false)
       setProgress(0)
     } else if (currentStage < 5) {
       // Move to next stage
       setCurrentStage(currentStage + 1)
+      setIsPlaying(false)
+      setIsPaused(false)
+      setProgress(0)
     } else {
       // Stage 6 is the last stage - game over
       setModalContent({ correct: false, answer: currentTrack.name })
       setShowModal(true)
       setIsPlaying(false)
+      setIsPaused(false)
       setProgress(0)
     }
 
     setGuess("")
+    setSelectedUri(null)
+    setShowSuggestions(false)
   }
 
   const handleSkip = () => {
     console.log("🔄 [Skip] Current stage:", currentStage, "Tracks length:", tracks.length)
     
-    // Clear any existing timeouts
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      console.log("🔄 [Skip] Cleared timeout")
-    }
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current)
-      console.log("🔄 [Skip] Cleared interval")
-    }
+    void pauseCurrentPlayback()
+    clearPlaybackTimers()
+
+    const newGuesses = [...guesses, "SKIPPED"]
+    setGuesses(newGuesses)
     
     if (currentStage < 5) {
       console.log("🔄 [Skip] Moving to next stage:", currentStage + 1)
       setCurrentStage(currentStage + 1)
       setIsPlaying(false)
+      setIsPaused(false)
       setProgress(0)
     } else {
       // Stage 6 - game over
@@ -403,24 +701,37 @@ export default function GamePage() {
       setModalContent({ correct: false, answer: currentTrack.name })
       setShowModal(true)
       setIsPlaying(false)
+      setIsPaused(false)
       setProgress(0)
     }
+    setGuess("")
+    setSelectedUri(null)
+    setShowSuggestions(false)
   }
 
   const handlePause = async () => {
     if (!player || !isPlaying) return
 
-    try {
-      await player.pause()
-      setIsPlaying(false)
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current)
-      }
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current)
-      }
-    } catch (error) {
+    // Update UI state immediately — don't wait for async pause to complete
+    setIsPlaying(false)
+    setIsPaused(true)
+    clearPlaybackTimers()
+
+    // Fire and forget — pause runs in background
+    pauseCurrentPlayback().catch(error => {
       console.error("Error pausing track:", error)
+    })
+  }
+
+  const handleResume = async () => {
+    if (!player || isPlaying) return
+
+    try {
+      const duration = stageDurations[currentStage]
+      const elapsed = Math.round((progress / 100) * duration)
+      await playSegment(elapsed)
+    } catch (error) {
+      console.error("Error resuming track:", error)
     }
   }
 
@@ -428,35 +739,29 @@ export default function GamePage() {
     console.log("🔄 [NextSong] Moving to next song")
     setShowModal(false)
     
-    // Clear any existing timeouts
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      console.log("🔄 [NextSong] Cleared timeout")
-    }
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current)
-      console.log("🔄 [NextSong] Cleared interval")
-    }
+    clearPlaybackTimers()
     
-    // Force pause playback
-    if (player && isPlaying) {
-      try {
-        await player.pause()
-        console.log("🔄 [NextSong] Forced pause successful")
-      } catch (error) {
-        console.error("🔄 [NextSong] Error forcing pause:", error)
-      }
-    }
+    await pauseCurrentPlayback()
+    console.log("🔄 [NextSong] Forced pause successful")
+    
+    setGuesses([])
     
     if (currentIndex < tracks.length - 1) {
       setCurrentIndex(currentIndex + 1)
       setCurrentStage(0)
       setProgress(0)
       setIsPlaying(false)
+      setIsPaused(false)
       console.log("🔄 [NextSong] Moved to track:", currentIndex + 1)
     } else {
       // Game finished
       console.log("🔄 [NextSong] Game finished, going to playlist")
+      
+      const playlistId = localStorage.getItem("current_playlist_id") || "default"
+      localStorage.removeItem(`songless_state_${playlistId}`)
+      localStorage.removeItem("current_playlist_id")
+      localStorage.removeItem("game_tracks")
+      
       router.push("/playlist")
     }
   }
@@ -468,9 +773,13 @@ export default function GamePage() {
 
   const handleExitPlaylist = () => {
     // Clear tracks and go back to playlist page
+    clearPlaybackTimers()
     if (player) {
       player.disconnect()
     }
+    const playlistId = localStorage.getItem("current_playlist_id") || "default"
+    localStorage.removeItem(`songless_state_${playlistId}`)
+    localStorage.removeItem("current_playlist_id")
     localStorage.removeItem("game_tracks")
     router.push("/playlist")
   }
@@ -505,7 +814,16 @@ export default function GamePage() {
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-4">🎉 Game Complete!</h1>
           <p className="text-gray-400 mb-6">You've played all songs in the playlist</p>
-          <Button onClick={() => router.push("/playlist")} className="bg-green-600 hover:bg-green-700">
+          <Button 
+            onClick={() => {
+              const playlistId = localStorage.getItem("current_playlist_id") || "default"
+              localStorage.removeItem(`songless_state_${playlistId}`)
+              localStorage.removeItem("current_playlist_id")
+              localStorage.removeItem("game_tracks")
+              router.push("/playlist")
+            }} 
+            className="bg-green-600 hover:bg-green-700"
+          >
             Play Another Playlist
           </Button>
         </div>
@@ -536,7 +854,7 @@ export default function GamePage() {
               Spotify Premium subscription is required to play SonglessUnlimited with audio playback.
             </p>
             <p className="text-gray-300 text-sm">
-              You can still view track information and play a text-based version of the game.
+              You can browse through the playlist here, but the guessing game stays spoiler-free until playback is available.
             </p>
           </div>
 
@@ -544,8 +862,9 @@ export default function GamePage() {
             <div className="bg-gray-900 border-gray-700 rounded-lg p-6">
               <h3 className="text-white text-lg font-semibold mb-4">Track {currentIndex + 1} of {tracks.length}</h3>
               <div className="text-center">
-                <p className="text-gray-400 mb-2">Song Title:</p>
-                <p className="text-white text-2xl font-bold mb-4">{tracks[currentIndex].name}</p>
+                <p className="text-gray-400 mb-4">
+                  Audio playback is unavailable for this account. You can move through the playlist without revealing song names.
+                </p>
                 <Button 
                   onClick={() => {
                     if (currentIndex < tracks.length - 1) {
@@ -633,29 +952,113 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Play button */}
-        <div className="flex justify-center mb-8">
+        {/* Playback controls */}
+        <div className="flex justify-center gap-4 mb-8">
           <Button
-            onClick={playSegment}
+            onClick={isPaused ? handleResume : () => playSegment()}
+            aria-label={isPaused ? "Resume playback" : "Play preview"}
             size="lg"
             className="rounded-full w-20 h-20 bg-green-600 hover:bg-green-700 shadow-lg shadow-green-500/25"
             disabled={isPlaying}
           >
             <Play className="w-8 h-8 fill-white" />
           </Button>
+          <Button
+            onClick={handlePause}
+            aria-label="Pause playback"
+            size="lg"
+            variant="outline"
+            className="rounded-full w-20 h-20 border-gray-500 bg-gray-800 text-white hover:bg-gray-700"
+            disabled={!isPlaying}
+          >
+            Pause
+          </Button>
+        </div>
+
+        {/* Previous guesses list */}
+        <div className="space-y-2 mb-6 border border-gray-800 rounded-lg p-3 bg-gray-900/20">
+          {Array.from({ length: 6 }).map((_, index) => {
+            const guessText = guesses[index]
+            const isCurrent = index === currentStage
+            const isPast = index < currentStage
+
+            return (
+              <div 
+                key={index} 
+                className={`h-9 flex items-center px-3 rounded border text-sm font-medium ${
+                  isCurrent 
+                    ? 'border-gray-500 bg-gray-800/40 text-gray-300' 
+                    : isPast 
+                    ? guessText === 'SKIPPED'
+                      ? 'border-gray-800 bg-gray-950/50 text-gray-500 line-through'
+                      : 'border-red-950 bg-red-950/10 text-red-400/80'
+                    : 'border-gray-800 bg-transparent text-gray-700 select-none'
+                }`}
+              >
+                <span className="w-6 text-xs text-gray-500 mr-2">{index + 1}</span>
+                {isPast ? (
+                  <span className="truncate">{guessText}</span>
+                ) : isCurrent ? (
+                  <span className="animate-pulse text-gray-500">Type your guess or skip...</span>
+                ) : (
+                  <span></span>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         {/* Guess input */}
         <div className="space-y-4">
-          <div className="relative">
+          <div ref={searchContainerRef} className="relative">
             <Input
               type="text"
               placeholder="Know it? Search for the title"
               value={guess}
-              onChange={(e) => setGuess(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleGuess()}
+              onChange={(e) => {
+                setGuess(e.target.value)
+                setSelectedUri(null)
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onKeyDown={(e) => e.key === "Enter" && handleGuess()}
               className="bg-gray-800 border-gray-600 text-white text-lg h-12 focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
             />
+            {isSearching && (
+              <div className="absolute right-3 top-3.5">
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+              </div>
+            )}
+            
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 mt-2 bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-800">
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.uri}
+                    type="button"
+                    onClick={() => {
+                      setGuess(`${suggestion.artists} - ${suggestion.name}`)
+                      setSelectedUri(suggestion.uri)
+                      setShowSuggestions(false)
+                    }}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-800 flex items-center space-x-3 transition-colors"
+                  >
+                    {suggestion.albumImage ? (
+                      <img 
+                        src={suggestion.albumImage} 
+                        alt="" 
+                        className="w-8 h-8 rounded object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-gray-800 rounded flex-shrink-0"></div>
+                    )}
+                    <div className="truncate">
+                      <p className="text-white font-medium truncate">{suggestion.name}</p>
+                      <p className="text-gray-400 text-xs truncate">{suggestion.artists}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex gap-4">
@@ -683,6 +1086,8 @@ export default function GamePage() {
           answer={modalContent.answer}
           onNext={handleNextSong}
           onBack={handleBackToPlaylist}
+          guesses={guesses}
+          trackIndex={currentIndex}
         />
       </div>
     </div>

@@ -10,7 +10,7 @@ export async function GET() {
   
   const config = {
     clientId: process.env.SPOTIFY_CLIENT_ID,
-    redirectUri: process.env.SPOTIFY_REDIRECT_URI || `${baseUrl}/api/spotify/callback`,
+    redirectUri: process.env.SPOTIFY_REDIRECT_URI || `${baseUrl}/callback`,
     scopes: [
       "streaming",
       "user-read-email",

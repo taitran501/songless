@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
-import { TracksProvider } from "@/hooks/tracks-store.tsx"
+import { TracksProvider } from "@/hooks/tracks-store"
+import { Toaster } from "@/components/ui/toaster"
 
 const geist = Geist({
   variable: "--font-geist-sans",
@@ -29,6 +30,7 @@ export default function RootLayout({
         <TracksProvider>
           {children}
         </TracksProvider>
+        <Toaster />
       </body>
     </html>
   )

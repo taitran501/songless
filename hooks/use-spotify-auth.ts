@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { refreshSpotifyToken } from "@/lib/utils"
 
 interface SpotifyAuthState {
   accessToken: string | null
@@ -7,6 +6,12 @@ interface SpotifyAuthState {
   expiresAt: number // ms epoch
   isLoading: boolean
   error: string | null
+}
+
+interface SpotifyRefreshResponse {
+  access_token: string
+  refresh_token: string
+  expires_in: number
 }
 
 export function useSpotifyAuth() {
@@ -39,23 +44,36 @@ export function useSpotifyAuth() {
     
     if (isExpired && authState.refreshToken) {
       console.log("Token expired or expiring soon, refreshing...")
-      const success = await refreshTokens()
-      return success ? authState.accessToken : null
+      const refreshedToken = await refreshTokens()
+      return refreshedToken
     }
     
     return authState.accessToken
   }
 
-  const refreshTokens = async () => {
+  const refreshTokens = async (): Promise<string | null> => {
     if (!authState.refreshToken) {
       setAuthState(prev => ({ ...prev, error: "No refresh token available" }))
-      return false
+      return null
     }
 
     setAuthState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
-      const result = await refreshSpotifyToken(authState.refreshToken)
+      const response = await fetch("/api/spotify/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refresh_token: authState.refreshToken }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || "Failed to refresh token")
+      }
+
+      const result: SpotifyRefreshResponse = await response.json()
       
       if (result) {
         const expiresAt = Date.now() + result.expires_in * 1000
@@ -71,14 +89,14 @@ export function useSpotifyAuth() {
           isLoading: false,
           error: null
         })
-        return true
+        return result.access_token
       } else {
         setAuthState(prev => ({ 
           ...prev, 
           isLoading: false, 
           error: "Failed to refresh token" 
         }))
-        return false
+        return null
       }
     } catch (error) {
       setAuthState(prev => ({ 
@@ -86,7 +104,7 @@ export function useSpotifyAuth() {
         isLoading: false, 
         error: "Token refresh failed" 
       }))
-      return false
+      return null
     }
   }
 
