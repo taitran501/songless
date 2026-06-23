@@ -34,3 +34,10 @@ next-env.d.ts
 # tool-generated / local indexes (not needed in repo)
 .codegraph/
 .playwright-cli/
+
+# local dev/test scratch files
+test-*.html
+debug-*.md
+/scripts/
+/pnpm-lock.yaml
+/styles/
