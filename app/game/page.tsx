@@ -494,6 +494,11 @@ export default function GamePage() {
 
         spotifyPlayer.addListener("playback_error", ({ message }: { message: string }) => {
           console.error("Playback error:", message)
+          
+          if (message.includes("Cannot perform operation; no list was loaded")) {
+            return
+          }
+
           toast({
             title: "Playback Error",
             description: `Spotify Player error: ${message}. If audio fails, try skipping or resuming the song.`,
