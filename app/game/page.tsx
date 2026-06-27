@@ -681,15 +681,7 @@ export default function GamePage() {
       }
 
       if (!playResponse.ok) {
-        if (playResponse.status === 429) {
-          toast({
-            title: "Rate Limit Exceeded",
-            description: "Spotify API rate limit exceeded. Please wait a moment and try again.",
-            variant: "destructive"
-          })
-        } else {
-          throw new Error(`Failed to play track: ${playResponse.status}`)
-        }
+        throw new Error(playResponse.status === 429 ? "Rate limit exceeded" : `Failed to play track: ${playResponse.status}`)
       }
 
       console.log("🎵 [PlaySegment] Play API call successful")
@@ -703,6 +695,10 @@ export default function GamePage() {
       
       if (currentTrack?.preview_url) {
         console.warn("API/SDK play call failed. Falling back to preview URL.")
+        toast({
+          title: "Switching to Preview",
+          description: "Premium player limit reached. Using preview audio.",
+        })
         setSdkPlaybackFailed(true)
         setTimeout(() => {
           if (playSegmentRef.current) {
@@ -714,7 +710,9 @@ export default function GamePage() {
 
       toast({
         title: "Playback Failed",
-        description: "Could not start audio playback. Ensure your Spotify Premium account is active and you have a stable network connection.",
+        description: error instanceof Error && error.message.includes("Rate limit") 
+          ? "Spotify API rate limit exceeded. Please wait a moment." 
+          : "Could not start audio playback. Ensure your Spotify Premium account is active.",
         variant: "destructive"
       })
     }
