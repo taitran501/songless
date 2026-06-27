@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
             name: item.track.name,
             duration_ms: item.track.duration_ms || 0,
             albumImage: item.track.album?.images?.[0]?.url ?? null,
+            preview_url: item.track.preview_url || null,
           }
         } catch (error) {
           console.error("Error mapping track:", error, item)

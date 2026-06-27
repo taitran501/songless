@@ -38,7 +38,7 @@ export default function LoginPage() {
         const params = new URLSearchParams({
           response_type: "code",
           client_id: config.clientId,
-          redirect_uri: window.location.origin + "/callback",
+          redirect_uri: config.redirectUri,
           scope: config.scopes,
           state: "STATE"
         })

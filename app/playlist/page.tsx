@@ -10,13 +10,14 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
-import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert } from "lucide-react"
+import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2 } from "lucide-react"
 
 interface Track {
   uri: string
   name: string
   duration_ms: number
   albumImage?: string | null
+  preview_url?: string | null
 }
 
 export default function PlaylistPage() {
@@ -164,38 +165,68 @@ export default function PlaylistPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-4">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-4xl font-bold text-white text-center mb-8">SonglessUnlimited</h1>
+    <div className="min-h-screen bg-[#030712] text-gray-100 flex flex-col relative overflow-hidden font-sans p-4 sm:p-6 md:p-8">
+      {/* Ambient background glows */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-green-500/10 blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-500/5 blur-[150px] pointer-events-none" />
+      <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
 
-        <Card className="bg-gray-900 border-gray-700">
-          <CardHeader>
-            <CardTitle className="text-white">Add Playlist</CardTitle>
+      <div className="max-w-2xl mx-auto w-full relative z-10 flex-1 flex flex-col justify-center py-6 sm:py-12">
+        <header className="text-center mb-10 animate-fade-in">
+
+          <h1 className="text-5xl font-extrabold tracking-tight bg-gradient-to-r from-green-400 via-emerald-300 to-teal-400 bg-clip-text text-transparent mb-3 drop-shadow-[0_0_30px_rgba(34,197,94,0.15)]">
+            Songless<span className="text-white font-light">Unlimited</span>
+          </h1>
+          <p className="text-gray-400 text-sm max-w-md mx-auto leading-relaxed">
+            Test your musical memory. Load any Spotify playlist, listen to the clip, and name the tune.
+          </p>
+        </header>
+
+        <Card className="bg-gray-900/40 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden mb-6 animate-slide-up">
+          <CardHeader className="border-b border-white/5 pb-4">
+            <CardTitle className="text-white text-lg font-bold flex items-center space-x-2.5">
+              <div className="bg-green-500/10 p-2 rounded-lg border border-green-500/20">
+                <Music className="w-5 h-5 text-green-400" />
+              </div>
+              <span>Connect Playlist</span>
+            </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6 space-y-4">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                type="text"
-                placeholder="Enter Spotify playlist ID or URL"
-                value={playlistInput}
-                onChange={(e) => setPlaylistInput(e.target.value)}
-                className="bg-gray-800 border-gray-600 text-white"
-                disabled={loading}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="playlist-input" className="text-gray-300 text-sm font-medium">Spotify Playlist URL or ID</Label>
+                <Input
+                  id="playlist-input"
+                  type="text"
+                  placeholder="https://open.spotify.com/playlist/..."
+                  value={playlistInput}
+                  onChange={(e) => setPlaylistInput(e.target.value)}
+                  className="bg-gray-950/60 border-white/10 text-white rounded-xl h-12 px-4 focus-visible:ring-green-500/50 focus-visible:border-green-500/50 placeholder-gray-600 transition-all"
+                  disabled={loading}
+                />
+              </div>
               
               {error && (
-                <div className="text-red-400 text-sm bg-red-900/20 p-3 rounded">
-                  {error}
+                <div className="text-red-400 text-sm bg-red-950/20 border border-red-500/30 p-4 rounded-xl flex items-start space-x-2">
+                  <span className="font-semibold">⚠️</span>
+                  <span>{error}</span>
                 </div>
               )}
               
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <Button
                   type="submit"
                   disabled={loading || !playlistInput.trim()}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-green-500/10 hover:shadow-green-500/20 transition-all duration-300 active:scale-[0.98]"
                 >
-                  {loading ? "Loading..." : "Load Playlist"}
+                  {loading ? (
+                    <span className="flex items-center justify-center space-x-2">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Fetching tracks...</span>
+                    </span>
+                  ) : (
+                    "Load Playlist"
+                  )}
                 </Button>
                 
                 <Button
@@ -206,69 +237,21 @@ export default function PlaylistPage() {
                     localStorage.removeItem("spotify_refresh_token")
                     router.push("/")
                   }}
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className="bg-transparent border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
                 >
-                  Re-login with new scopes
+                  Switch Spotify Account
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
 
-        {/* Setup & Instructions Guide */}
-        <Card className="bg-gray-950 border border-gray-800 shadow-xl overflow-hidden mt-6">
-          <div className="bg-gradient-to-r from-green-500/10 via-emerald-500/5 to-transparent p-4 border-b border-gray-800">
-            <div className="flex items-center space-x-2">
-              <Info className="w-5 h-5 text-green-400" />
-              <h2 className="text-white font-semibold text-base">Spotify Connection & Game Setup</h2>
-            </div>
-          </div>
-          <CardContent className="p-5 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              {/* Requirement 1 */}
-              <div className="bg-gray-900/60 p-4 rounded-lg border border-gray-800/80 space-y-2">
-                <div className="flex items-center space-x-2 text-green-400">
-                  <Music className="w-4 h-4" />
-                  <span className="font-semibold text-xs uppercase tracking-wider">Spotify Premium</span>
-                </div>
-                <h3 className="text-white font-medium text-sm">Account Requirement</h3>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  Spotify Premium is **strictly required**. Free accounts are blocked by Spotify from using the Web Playback SDK for full-track streaming.
-                </p>
-              </div>
-
-              {/* Requirement 2 */}
-              <div className="bg-gray-900/60 p-4 rounded-lg border border-gray-800/80 space-y-2">
-                <div className="flex items-center space-x-2 text-green-400">
-                  <Smartphone className="w-4 h-4" />
-                  <span className="font-semibold text-xs uppercase tracking-wider">Active Device</span>
-                </div>
-                <h3 className="text-white font-medium text-sm">Open Spotify App</h3>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  Keep your Spotify app (desktop/mobile) **open and active**. Play any song on your app first for 2 seconds to make sure it is in an active state.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-amber-950/20 border border-amber-900/50 rounded-lg p-3.5 flex items-start space-x-3">
-              <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-amber-400 font-medium text-xs">Troubleshooting 403 / No Active Device Error</h4>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  If the game shows a "No Active Device" warning, simply open your Spotify App, press **Play** on any track, then **Pause** it, and return to the game page. The SDK will automatically locate your session!
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-
         {recentPlaylists.length > 0 && (
-          <Card className="bg-gray-900 border-gray-700 mt-6">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-white text-lg">Recent Playlists</CardTitle>
+          <Card className="bg-gray-900/40 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden mb-6 animate-slide-up">
+            <CardHeader className="border-b border-white/5 pb-4">
+              <CardTitle className="text-white text-lg font-bold">Recent Playlists</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {recentPlaylists.map((p) => (
                   <Button
@@ -278,12 +261,13 @@ export default function PlaylistPage() {
                       setPlaylistInput(p.id)
                       void loadPlaylistById(p.id)
                     }}
-                    className="justify-start text-left bg-gray-800 hover:bg-gray-700 text-white border-gray-600 truncate py-6 h-auto w-full"
+                    className="justify-start text-left bg-gray-950/40 hover:bg-gray-900/60 text-white border-white/5 hover:border-white/20 transition-all duration-300 rounded-xl py-6 px-4 h-auto w-full group relative overflow-hidden"
                     disabled={loading}
                   >
-                    <div className="truncate w-full">
-                      <p className="font-semibold truncate text-sm">{p.name}</p>
-                      <p className="text-xs text-gray-400 truncate">ID: {p.id}</p>
+                    <div className="absolute inset-0 bg-gradient-to-r from-green-500/0 via-green-500/5 to-green-500/0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="truncate w-full relative z-10">
+                      <p className="font-bold truncate text-sm text-gray-200 group-hover:text-green-400 transition-colors">{p.name}</p>
+                      <p className="text-xs text-gray-500 truncate mt-1">ID: {p.id}</p>
                     </div>
                   </Button>
                 ))}
@@ -293,23 +277,32 @@ export default function PlaylistPage() {
         )}
 
         {tracks.length > 0 && (
-          <div className="mt-6">
-            <div className="bg-green-900/20 border border-green-600 rounded-lg p-6 mb-4">
-              <h3 className="text-green-400 text-lg font-semibold mb-4">✅ Playlist Loaded Successfully!</h3>
-              <p className="text-green-200 mb-6">
-                Found {tracks.length} tracks in your playlist.
-              </p>
+          <div className="mb-6 animate-fade-in">
+            <div className="bg-gradient-to-br from-green-950/20 to-emerald-950/10 border border-green-500/30 rounded-2xl p-6 shadow-2xl">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="bg-green-500/20 p-2 rounded-xl border border-green-500/30">
+                  <span className="text-green-400 font-bold text-sm">✓</span>
+                </div>
+                <div>
+                  <h3 className="text-white font-bold text-lg">Playlist Loaded</h3>
+                  <p className="text-green-400 text-sm">
+                    Found {tracks.length} valid tracks in this playlist
+                  </p>
+                </div>
+              </div>
               
               {/* Shuffle Option */}
-              <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg border border-gray-600 mb-6">
+              <div className="flex items-center justify-between p-4 bg-gray-950/50 rounded-xl border border-white/5 mb-6">
                 <div className="flex items-center space-x-3">
-                  <Shuffle className="w-5 h-5 text-green-400" />
+                  <div className="bg-green-500/10 p-2 rounded-lg">
+                    <Shuffle className="w-5 h-5 text-green-400" />
+                  </div>
                   <div>
-                    <Label htmlFor="shuffle" className="text-white font-medium">
+                    <Label htmlFor="shuffle" className="text-white font-semibold text-sm cursor-pointer">
                       Shuffle Tracks
                     </Label>
-                    <p className="text-gray-400 text-sm">
-                      Randomize the order of tracks before starting the game
+                    <p className="text-gray-400 text-xs">
+                      Randomize track order before starting the game
                     </p>
                   </div>
                 </div>
@@ -317,39 +310,72 @@ export default function PlaylistPage() {
                   id="shuffle"
                   checked={shuffleEnabled}
                   onCheckedChange={setShuffleEnabled}
+                  className="data-[state=checked]:bg-green-500"
                 />
-              </div>
-
-              {/* Game Rules */}
-              <div className="bg-blue-900/20 border border-blue-600 rounded-lg p-4 mb-6">
-                <h3 className="text-blue-400 text-lg font-semibold mb-2">Game Rules</h3>
-                <ul className="text-blue-200 text-sm space-y-1">
-                  <li>• You'll hear the beginning of each song through Spotify playback</li>
-                  <li>• Try to guess the song title</li>
-                  <li>• Each song has 6 stages with increasing preview duration</li>
-                  <li>• You can pause, resume, skip stages, or submit a guess at any time</li>
-                  <li>• Stage 1: 0.5s • Stage 2: 1s • Stage 3: 2s • Stage 4: 4s • Stage 5: 8s • Stage 6: 15s</li>
-                </ul>
               </div>
 
               <Button 
                 onClick={() => {
                   if (shuffleEnabled) {
-                    // Shuffle tracks before starting game
                     const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5)
                     setTracks(shuffledTracks)
                   }
                   router.push("/game")
                 }}
-                className="bg-green-600 hover:bg-green-700 w-full"
+                className="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold text-base h-14 w-full rounded-xl shadow-lg shadow-green-500/20 hover:shadow-green-500/35 transition-all duration-300 active:scale-[0.98]"
                 size="lg"
               >
-                <Play className="w-4 h-4 mr-2" />
+                <Play className="w-5 h-5 mr-2 fill-white" />
                 Start Game
               </Button>
             </div>
           </div>
         )}
+
+        {/* Setup & Instructions Guide */}
+        <Card className="bg-gray-950/20 backdrop-blur-xl border border-white/5 shadow-2xl rounded-2xl overflow-hidden animate-slide-up">
+          <div className="bg-gradient-to-r from-green-500/10 via-emerald-500/5 to-transparent p-4 border-b border-white/5">
+            <div className="flex items-center space-x-2">
+              <Info className="w-5 h-5 text-green-400" />
+              <h2 className="text-white font-semibold text-base">Setup & Guide</h2>
+            </div>
+          </div>
+          <CardContent className="p-6 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="bg-gray-900/30 p-4 rounded-xl border border-white/5 space-y-2 hover:border-white/10 transition-colors">
+                <div className="flex items-center space-x-2 text-green-400">
+                  <Music className="w-4 h-4" />
+                  <span className="font-semibold text-[10px] uppercase tracking-wider">Spotify Account</span>
+                </div>
+                <h3 className="text-white font-semibold text-sm">Account Requirements</h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Spotify Premium is optional. If your songs don't have previews, the game will automatically utilize the Web SDK.
+                </p>
+              </div>
+
+              <div className="bg-gray-900/30 p-4 rounded-xl border border-white/5 space-y-2 hover:border-white/10 transition-colors">
+                <div className="flex items-center space-x-2 text-green-400">
+                  <Smartphone className="w-4 h-4" />
+                  <span className="font-semibold text-[10px] uppercase tracking-wider">Active Device</span>
+                </div>
+                <h3 className="text-white font-semibold text-sm">SDK Player Link</h3>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  Keep Spotify desktop or mobile player active. Play any track for 2s first to establish connection if using Premium.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-amber-950/15 border border-amber-500/20 rounded-xl p-4 flex items-start space-x-3">
+              <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h4 className="text-amber-400 font-semibold text-xs uppercase tracking-wide">Troubleshooting 403 Errors</h4>
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  If the SDK device transfer fails, open the Spotify App, press play on any track, then pause, and click Play in game.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

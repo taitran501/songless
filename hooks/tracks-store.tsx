@@ -7,6 +7,7 @@ interface Track {
   name: string
   duration_ms: number
   albumImage?: string | null
+  preview_url?: string | null
 }
 
 interface TracksContextType {
@@ -28,8 +29,10 @@ export function TracksProvider({ children }: { children: ReactNode }) {
       const savedTracks = localStorage.getItem("game_tracks")
       if (savedTracks) {
         const parsedTracks = JSON.parse(savedTracks)
-        setTracksState(parsedTracks)
-        console.log("📦 [TracksProvider] Loaded tracks from localStorage:", parsedTracks.length)
+        // Filter out legacy tracks that do not have a preview_url
+        const validTracks = parsedTracks.filter((t: Track) => !!t.preview_url)
+        setTracksState(validTracks)
+        console.log("📦 [TracksProvider] Loaded tracks from localStorage:", validTracks.length)
       } else {
         console.log("📦 [TracksProvider] No saved tracks found in localStorage")
       }
