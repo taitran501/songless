@@ -40,4 +40,16 @@ test-*.html
 debug-*.md
 /scripts/
 /pnpm-lock.yaml
-/styles/
+/styles/
+
+# Duplicate hooks
+/components/ui/use-mobile.tsx
+/components/ui/use-toast.ts
+
+# Unused placeholders
+/public/placeholder*
+
+# Local dev documentation
+/DEPLOY_GUIDE.md
+/SPOTIFY_OAUTH_UPDATE.md
+/test-flow.md

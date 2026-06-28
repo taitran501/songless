@@ -66,6 +66,7 @@ export default function GamePage() {
   const currentTrackRef = useRef<any>(null)
   const playSegmentRef = useRef<any>(null)
   const isPlayingFallbackRef = useRef(false)
+  const playSessionIdRef = useRef<number>(0)
   
   useEffect(() => {
     currentTrackRef.current = tracks[currentIndex]
@@ -110,7 +111,60 @@ export default function GamePage() {
     }
   }, [])
 
-  const pauseCurrentPlayback = useCallback(async () => {
+  const startSafetyPauseMonitor = useCallback((activePlayer: SpotifyPlayer, sessionId: number) => {
+    if (!activePlayer) return
+
+    let checkCount = 0
+    const maxChecks = 12 // 3 seconds total (12 * 250ms)
+
+    const interval = setInterval(async () => {
+      // If the play session has changed, clear the monitor immediately
+      if (sessionId !== playSessionIdRef.current) {
+        clearInterval(interval)
+        return
+      }
+
+      checkCount++
+      if (checkCount > maxChecks) {
+        clearInterval(interval)
+        return
+      }
+
+      try {
+        const state = await activePlayer.getCurrentState()
+        // Check session again after async state call
+        if (sessionId !== playSessionIdRef.current) {
+          clearInterval(interval)
+          return
+        }
+
+        if (state && !state.paused) {
+          console.log("⚠️ [Safety Pause Monitor] Track is still playing, sending force-pause command")
+          await activePlayer.pause()
+          
+          const validToken = await ensureValidToken()
+          if (sessionId !== playSessionIdRef.current) {
+            clearInterval(interval)
+            return
+          }
+          if (validToken) {
+            void fetch("https://api.spotify.com/v1/me/player/pause", {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${validToken}`,
+              },
+            })
+          }
+        } else if (state && state.paused) {
+          clearInterval(interval)
+        }
+      } catch (error) {
+        console.warn("[Safety Pause Monitor] Error checking state:", error)
+      }
+    }, 250)
+  }, [ensureValidToken])
+
+  const pauseCurrentPlayback = useCallback(async (sessionId?: number) => {
     if (audioRef.current) {
       audioRef.current.pause()
     }
@@ -122,28 +176,17 @@ export default function GamePage() {
 
     if (!player) return
 
+    const targetSessionId = sessionId ?? playSessionIdRef.current
+
     try {
       await player.pause()
     } catch (error) {
       console.warn("Error pausing current playback via SDK:", error)
     }
 
-    // Secondary pause attempt 200ms later to handle SDK buffering race conditions
-    setTimeout(async () => {
-      try {
-        const state = await player.getCurrentState()
-        if (state && !state.paused) {
-          console.log("⚠️ Spotify player still playing, triggering secondary pause")
-          await player.pause()
-        }
-      } catch (e) {
-        console.warn("Error in secondary pause check:", e)
-      }
-    }, 200)
-
-    // Call Web API pause as absolute fallback
     try {
       const validToken = await ensureValidToken()
+      if (targetSessionId !== playSessionIdRef.current) return
       if (validToken) {
         await fetch("https://api.spotify.com/v1/me/player/pause", {
           method: "PUT",
@@ -155,13 +198,21 @@ export default function GamePage() {
     } catch (error) {
       console.warn("Error pausing current playback via API:", error)
     }
-  }, [player, deviceId, ensureValidToken])
+
+    // Start safety pause monitor to catch delayed buffering playbacks
+    startSafetyPauseMonitor(player, targetSessionId)
+  }, [player, ensureValidToken, startSafetyPauseMonitor])
 
   const startProgressTimer = useCallback((activePlayer: SpotifyPlayer, duration: number, initialElapsed = 0) => {
     clearPlaybackTimers()
+    const capturedSessionId = playSessionIdRef.current
 
     const startTime = Date.now() - initialElapsed
     progressIntervalRef.current = setInterval(() => {
+      if (capturedSessionId !== playSessionIdRef.current) {
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current)
+        return
+      }
       const elapsed = Date.now() - startTime
       const progressPercent = Math.min((elapsed / duration) * 100, 100)
       setProgress(progressPercent)
@@ -169,8 +220,10 @@ export default function GamePage() {
 
     const remainingDuration = Math.max(duration - initialElapsed, 0)
     timeoutRef.current = setTimeout(async () => {
+      if (capturedSessionId !== playSessionIdRef.current) return
+
       try {
-        await pauseCurrentPlayback()
+        await pauseCurrentPlayback(capturedSessionId)
         setIsPlaying(false)
         setIsPaused(false)
         clearPlaybackTimers()
@@ -573,6 +626,7 @@ export default function GamePage() {
   }, [premiumCheckDone, isPremium, player, accessToken, ensureValidToken, handleSessionExpired, clearPlaybackTimers, router])
 
   const playSegment = async (positionMs: number | any = 0, forceFallback = false) => {
+    const currentPlaySessionId = ++playSessionIdRef.current
     const startPosition = typeof positionMs === "number" ? positionMs : 0
     const currentTrack = tracks[currentIndex]
     
@@ -590,7 +644,8 @@ export default function GamePage() {
       currentStage,
       duration,
       startPosition,
-      useFallback
+      useFallback,
+      currentPlaySessionId
     })
 
     if (useFallback) {
@@ -614,6 +669,11 @@ export default function GamePage() {
           await audioRef.current.play()
         }
         
+        if (currentPlaySessionId !== playSessionIdRef.current) {
+          if (audioRef.current) audioRef.current.pause()
+          return
+        }
+        
         setIsPlaying(true)
         setIsPaused(false)
         setProgress((startPosition / duration) * 100)
@@ -627,6 +687,7 @@ export default function GamePage() {
 
     try {
       const validToken = await ensureValidToken()
+      if (currentPlaySessionId !== playSessionIdRef.current) return
       if (!validToken) {
         handleSessionExpired("Your Spotify session expired. Please log in again.")
         return
@@ -652,6 +713,10 @@ export default function GamePage() {
 
       // Try playing directly
       let playResponse = await doPlay()
+      if (currentPlaySessionId !== playSessionIdRef.current) {
+        void pauseCurrentPlayback(currentPlaySessionId)
+        return
+      }
 
       // If 403/404 (device not active/found), transfer playback and retry once
       if (playResponse.status === 403 || playResponse.status === 404) {
@@ -667,12 +732,18 @@ export default function GamePage() {
             play: false,
           }),
         })
+        if (currentPlaySessionId !== playSessionIdRef.current) return
 
         // Wait 800ms for Spotify to process the device transfer
         await new Promise(resolve => setTimeout(resolve, 800))
+        if (currentPlaySessionId !== playSessionIdRef.current) return
         
         // Retry playing
         playResponse = await doPlay()
+        if (currentPlaySessionId !== playSessionIdRef.current) {
+          void pauseCurrentPlayback(currentPlaySessionId)
+          return
+        }
       }
 
       if (playResponse.status === 401) {
@@ -723,6 +794,7 @@ export default function GamePage() {
   const handleGuess = () => {
     if (!guess.trim() || tracks.length === 0) return
 
+    playSessionIdRef.current++
     const currentTrack = tracks[currentIndex]
     const cleanGuess = cleanTrackName(guess)
     const cleanTarget = cleanTrackName(currentTrack.name)
@@ -732,7 +804,7 @@ export default function GamePage() {
                      cleanTarget.includes(cleanGuess)
 
     if (isPlaying) {
-      void pauseCurrentPlayback()
+      void pauseCurrentPlayback(playSessionIdRef.current)
     }
     clearPlaybackTimers()
 
@@ -766,10 +838,11 @@ export default function GamePage() {
   }
 
   const handleSkip = () => {
+    playSessionIdRef.current++
     console.log("🔄 [Skip] Current stage:", currentStage, "Tracks length:", tracks.length)
     
     if (isPlaying) {
-      void pauseCurrentPlayback()
+      void pauseCurrentPlayback(playSessionIdRef.current)
     }
     clearPlaybackTimers()
 
@@ -798,15 +871,16 @@ export default function GamePage() {
   }
 
   const handlePause = async () => {
-    if (!player || !isPlaying) return
+    if (!isPlaying) return
 
+    playSessionIdRef.current++
     // Update UI state immediately — don't wait for async pause to complete
     setIsPlaying(false)
     setIsPaused(true)
     clearPlaybackTimers()
 
     // Fire and forget — pause runs in background
-    pauseCurrentPlayback().catch(error => {
+    pauseCurrentPlayback(playSessionIdRef.current).catch(error => {
       console.warn("Error pausing track:", error)
     })
   }
@@ -842,13 +916,14 @@ export default function GamePage() {
   }
 
   const handleNextSong = async () => {
+    playSessionIdRef.current++
     console.log("🔄 [NextSong] Moving to next song")
     setShowModal(false)
     
     clearPlaybackTimers()
     
     if (isPlaying) {
-      await pauseCurrentPlayback()
+      await pauseCurrentPlayback(playSessionIdRef.current)
       console.log("🔄 [NextSong] Forced pause successful")
     }
     
