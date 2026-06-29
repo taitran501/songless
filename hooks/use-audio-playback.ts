@@ -30,6 +30,7 @@ export function useAudioPlayback({
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
   const [isResolvingAudio, setIsResolvingAudio] = useState(false)
+  const [loadingStep, setLoadingStep] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -140,6 +141,7 @@ export function useAudioPlayback({
     setYoutubeVideoId(null)
     setPlaybackError(null)
     setIsResolvingAudio(false)
+    setLoadingStep(null)
     resetPlayback()
 
     if (!currentTrack) return
@@ -152,6 +154,7 @@ export function useAudioPlayback({
     let isMounted = true
     const query = `${currentTrack.artists} - ${currentTrack.name}`
     setIsResolvingAudio(true)
+    setLoadingStep("Searching YouTube for audio source...")
     fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
       .then(async (response) => {
         const data = await response.json()
@@ -161,14 +164,21 @@ export function useAudioPlayback({
         return data
       })
       .then((data) => {
-        if (isMounted && data.videoId) setYoutubeVideoId(data.videoId)
+        if (isMounted && data.videoId) {
+          setLoadingStep("Loading YouTube player...")
+          setYoutubeVideoId(data.videoId)
+        }
         if (isMounted && !data.videoId) {
           setPlaybackError("No playable audio source was found for this track.")
+          setLoadingStep(null)
         }
       })
       .catch((error) => {
         console.error("YouTube search failed:", error)
-        if (isMounted) setPlaybackError("No playable audio source was found for this track.")
+        if (isMounted) {
+          setPlaybackError("No playable audio source was found for this track.")
+          setLoadingStep(null)
+        }
       })
       .finally(() => {
         if (isMounted) setIsResolvingAudio(false)
@@ -205,6 +215,7 @@ export function useAudioPlayback({
               // YouTube may reject volume control in some browsers.
             }
             setYtPlayer(event.target)
+            setLoadingStep(null)
           },
         },
       })
@@ -213,6 +224,7 @@ export function useAudioPlayback({
     if (ytPlayer && youtubeVideoId) {
       try {
         ytPlayer.cueVideoById(youtubeVideoId)
+        setLoadingStep(null)
       } catch (error) {
         console.warn("Could not cue YouTube video:", error)
       }
@@ -300,6 +312,7 @@ export function useAudioPlayback({
     isPaused,
     isResolvingAudio,
     isPlayerReady,
+    loadingStep,
     playbackError,
     playSegment,
     pause,

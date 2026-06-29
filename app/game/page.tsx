@@ -477,6 +477,7 @@ export default function GamePage() {
         <PlaybackPanel
           isPlayerReady={playback.isPlayerReady}
           isResolvingAudio={playback.isResolvingAudio}
+          loadingStep={playback.loadingStep}
           playbackError={playback.playbackError}
           isPlaying={playback.isPlaying}
           isPaused={playback.isPaused}
