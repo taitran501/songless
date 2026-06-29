@@ -366,27 +366,49 @@ export default function GamePage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-6">
+            {/* Score with performance label */}
             <div className="col-span-2 bg-[#10b981]/10 border border-[#10b981]/25 rounded-xl p-5 text-center">
               <p className="text-[10px] text-[#10b981] uppercase tracking-wide font-semibold">Score</p>
               <p className="text-4xl font-extrabold text-white">{score}</p>
-              <p className="text-xs text-[#9ca3af] mt-1">Max {maxScore}</p>
+              <p className="text-xs text-[#9ca3af] mt-1">
+                {accuracy === 100
+                  ? "🏆 Perfect — solved every track!"
+                  : accuracy >= 80
+                  ? "🔥 Great job!"
+                  : accuracy >= 50
+                  ? "👍 Nice try!"
+                  : "💪 Keep practicing!"}
+              </p>
             </div>
+
+            {/* Solved */}
             <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Solved</p>
               <p className="text-2xl font-extrabold text-white">{correctCount} / {tracks.length}</p>
             </div>
+
+            {/* Accuracy */}
             <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
               <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Accuracy</p>
               <p className="text-2xl font-extrabold text-white">{accuracy}%</p>
             </div>
-            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Average Stage</p>
-              <p className="text-2xl font-extrabold text-white">{averageStage}</p>
-            </div>
-            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
-              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Tracks</p>
-              <p className="text-2xl font-extrabold text-white">{tracks.length}</p>
-            </div>
+
+            {/* Average clip heard — how quickly they got it on average */}
+            {correctCount > 0 && (() => {
+              const STAGE_DURATIONS_S = [0.5, 1, 2, 4, 8, 15]
+              const avgStageIdx = correctCount > 0 ? (solvedStageTotal / correctCount) - 1 : 0
+              const clampedIdx = Math.max(0, Math.min(5, Math.round(avgStageIdx)))
+              const avgClip = STAGE_DURATIONS_S[clampedIdx]
+              return (
+                <div className="col-span-2 bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Avg. Clip Heard to Solve</p>
+                  <p className="text-2xl font-extrabold text-white">{avgClip}s</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {avgClip <= 0.5 ? "Instant recognition — legendary!" : avgClip <= 1 ? "Very fast!" : avgClip <= 2 ? "Solid!" : avgClip <= 4 ? "Getting there" : "Needed some hints"}
+                  </p>
+                </div>
+              )
+            })()}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">

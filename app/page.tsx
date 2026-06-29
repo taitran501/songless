@@ -14,7 +14,6 @@ export default function LoginPage() {
   const { accessToken, isLoading: isAuthLoading } = useSpotifyAuth()
 
   useEffect(() => {
-    // Check if user already has access token on mount
     if (isAuthLoading) return
     if (accessToken) {
       router.push("/playlist")
@@ -27,19 +26,12 @@ export default function LoginPage() {
     setInitializingSpotify(true)
     setError(null)
     try {
-      // Get Spotify config from API
       const response = await fetch('/api/spotify/config')
-      if (!response.ok) {
-        throw new Error('Failed to load Spotify configuration')
-      }
+      if (!response.ok) throw new Error('Failed to load Spotify configuration')
 
       const config = await response.json()
+      if (!config.clientId) throw new Error("SPOTIFY_CLIENT_ID environment variable is not set")
 
-      if (!config.clientId) {
-        throw new Error("SPOTIFY_CLIENT_ID environment variable is not set")
-      }
-
-      // Generate auth URL
       const params = new URLSearchParams({
         response_type: "code",
         client_id: config.clientId,
@@ -48,81 +40,54 @@ export default function LoginPage() {
         state: "STATE"
       })
 
-      const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`
-      window.location.href = authUrl
+      window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to initialize Spotify auth")
       setInitializingSpotify(false)
     }
   }
 
-  const handleGuestPlay = () => {
-    router.push("/playlist")
-  }
+  const handleGuestPlay = () => router.push("/playlist")
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#091009] text-[#dce5d9] flex items-center justify-center font-sans">
+      <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex items-center justify-center font-sans">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 text-[#4be277] animate-spin mx-auto mb-4" />
+          <Loader2 className="w-10 h-10 text-[#10b981] animate-spin mx-auto mb-4" />
           <h1 className="font-display text-4xl font-extrabold tracking-tight text-white mb-2">
-            <span className="text-[#4be277]">Songless</span><span className="text-white font-light">Unlimited</span>
+            <span className="bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">Songless</span>
+            <span className="text-white font-light">Unlimited</span>
           </h1>
-          <p className="text-[#869585] text-sm">Initializing app...</p>
+          <p className="text-[#6b7280] text-sm">Initializing...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#091009] text-[#dce5d9] flex flex-col justify-between font-sans relative overflow-hidden select-none" style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.015) 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col font-sans relative overflow-hidden select-none">
+      {/* Ambient glows — same as playlist/game pages */}
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />
+      <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
 
-      {/* Ambient glows */}
-      <div className="absolute top-[20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[#4be277]/5 blur-[135px] pointer-events-none" />
-      <div className="absolute bottom-[20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/5 blur-[150px] pointer-events-none" />
+      {/* Main content */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 relative z-10 py-12">
 
-      {/* Header Bar */}
-      <header className="w-full h-16 px-8 border-b border-[#3d4a3d]/30 bg-[#091009]/80 backdrop-blur-md flex items-center justify-between z-20 relative">
-        <div className="flex items-center gap-2 text-[#4be277] hover:opacity-90 cursor-pointer transition-opacity" onClick={() => router.push("/")}>
-          <svg className="w-5 h-5 text-[#4be277]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M9 18V5l12-2v13" />
-            <circle cx="6" cy="18" r="3" />
-            <circle cx="18" cy="16" r="3" />
-          </svg>
-          <span className="font-display font-bold text-lg tracking-tight text-[#4be277]">Songless<span className="text-[#dce5d9] font-normal">Unlimited</span></span>
-        </div>
-
-        <div className="flex items-center gap-6 text-[#869585]">
-          <button className="hover:text-white transition-colors" title="Leaderboard">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 20V10" />
-              <path d="M18 20V4" />
-              <path d="M6 20v-6" />
-            </svg>
-          </button>
-          <button className="hover:text-white transition-colors" title="Settings">
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
-          <button className="hover:text-white transition-colors" title="Profile">
-            <svg className="w-6 h-6 rounded-full border border-[#3d4a3d]/40 p-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Hero & Modes Selection */}
-      <main className="flex-1 max-w-5xl mx-auto w-full flex flex-col items-center justify-center px-6 py-12 z-10 relative">
+        {/* Logo / Hero */}
         <div className="text-center mb-12 animate-fade-in">
-          <h2 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight text-white mb-4">
-            <span className="text-[#4be277]">Songless</span> Unlimited
-          </h2>
-          <p className="text-[#bccbb9] text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
-            Test your music knowledge. Guess the song from short clips.
+          <div className="inline-flex items-center gap-2 mb-6 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20">
+            <Music className="w-3.5 h-3.5 text-[#10b981]" />
+            <span className="text-[#10b981] text-xs font-semibold uppercase tracking-widest font-display">Music Guessing Game</span>
+          </div>
+          <h1 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight mb-4">
+            <span className="bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+              Songless
+            </span>
+            <span className="text-white font-light">Unlimited</span>
+          </h1>
+          <p className="text-[#9ca3af] text-base sm:text-lg max-w-md mx-auto leading-relaxed">
+            Listen to a short clip. Guess the song. Beat your best score.
           </p>
 
           {error && (
@@ -136,84 +101,66 @@ export default function LoginPage() {
           )}
         </div>
 
-        {/* Side-by-Side Mode Selector */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl px-2 animate-slide-up">
+        {/* Mode Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-2xl animate-slide-up">
 
-          {/* Pro Mode Card */}
-          <div className="bg-[#0e150e]/60 backdrop-blur-xl border border-[#4be277]/20 hover:border-[#4be277]/40 rounded-2xl p-8 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-[0_0_30px_rgba(75,226,119,0.02)] hover:shadow-[0_0_40px_rgba(75,226,119,0.06)]">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#4be277]/2 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          {/* Spotify / Pro Mode */}
+          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-[#10b981]/20 hover:border-[#10b981]/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5 hover:shadow-[0_0_40px_rgba(16,185,129,0.08)]">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#10b981]/3 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
-            <div className="w-16 h-16 rounded-full bg-[#4be277]/10 flex items-center justify-center border border-[#4be277]/20 mb-6">
-              <svg className="w-8 h-8 text-[#4be277]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M22 9c.5.5.5 1.5 0 2" />
-                <path d="M20 7c1 1 1 3 0 4" />
-              </svg>
+            <div className="w-14 h-14 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/25 flex items-center justify-center mb-5">
+              <Music className="w-7 h-7 text-[#10b981]" />
             </div>
 
-            <h3 className="font-display text-2xl font-bold text-white mb-3">Pro Mode</h3>
-            <p className="text-[#bccbb9] text-sm leading-relaxed mb-8 flex-1 max-w-[280px]">
-              Connect your account for full integration and personalized high-stakes tracking.
+            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">Spotify Connected</span>
+            <h2 className="font-display text-xl font-bold text-white mb-2">Full Experience</h2>
+            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
+              Use any Spotify playlist. Audio previews stream directly. Tracks save your progress.
             </p>
 
             <Button
               onClick={handleSpotifyLogin}
               disabled={initializingSpotify}
-              className="w-full h-12 bg-[#4be277] hover:bg-[#4be277]/90 text-[#003915] font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(75,226,119,0.25)] transition-all duration-300 active:scale-[0.98]"
+              className="w-full h-11 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all duration-300 active:scale-[0.98]"
             >
               {initializingSpotify ? (
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />
               ) : (
-                "Connect Spotify Premium"
+                "Connect Spotify"
               )}
             </Button>
           </div>
 
-          {/* Guest Mode Card */}
-          <div className="bg-[#0e150e]/40 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-8 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/1 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          {/* Guest Mode */}
+          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
 
-            <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 mb-6">
-              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/30">
-                <svg className="w-4 h-4 text-red-500 fill-red-500 ml-0.5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-5">
+              <Youtube className="w-7 h-7 text-red-400" />
             </div>
 
-            <h3 className="font-display text-2xl font-bold text-white mb-3">Guest Mode</h3>
-            <p className="text-[#bccbb9] text-sm leading-relaxed mb-8 flex-1 max-w-[280px]">
-              Jump straight in with YouTube or public Spotify playlists. Quick, intense, anonymous.
+            <span className="text-[10px] text-red-400 font-semibold uppercase tracking-widest font-display mb-2">No Login Required</span>
+            <h2 className="font-display text-xl font-bold text-white mb-2">Guest Mode</h2>
+            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
+              Load a YouTube playlist or public Spotify playlist and play right away.
             </p>
 
             <Button
               onClick={handleGuestPlay}
-              className="w-full h-12 bg-[#1a221a]/60 hover:bg-[#242c24] border border-[#3d4a3d]/50 text-white font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
+              variant="outline"
+              className="w-full h-11 bg-transparent border border-white/10 hover:bg-white/5 text-[#dce5d9] font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
             >
-              Play Guest
+              Play as Guest
             </Button>
           </div>
 
         </div>
+
+        {/* Bottom note */}
+        <p className="text-[#4b5563] text-xs mt-10 text-center">
+          Public Spotify playlists work in guest mode — no login needed.
+        </p>
       </main>
-
-      {/* Footer Bar */}
-      <footer className="w-full py-8 px-8 border-t border-[#3d4a3d]/20 bg-[#091009] flex flex-col md:flex-row justify-between items-center gap-6 z-10 relative">
-        <div className="text-center md:text-left">
-          <h4 className="font-display text-sm font-bold text-[#dce5d9] mb-1 tracking-wide uppercase">SonglessUnlimited</h4>
-          <p className="text-[#869585] text-xs">© 2024 SonglessUnlimited. High-Stakes Music Discovery.</p>
-          <p className="text-[#869585] text-[11px] mt-1 leading-relaxed">No Spotify account required for YouTube or public Spotify playlists.</p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[#bccbb9]">
-          <a href="#" className="hover:text-white transition-colors">Terms of Service</a>
-          <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
-          <a href="#" className="hover:text-white transition-colors">Contact Support</a>
-          <a href="#" className="hover:text-white transition-colors">How to Play</a>
-        </div>
-      </footer>
-
     </div>
   )
 }
