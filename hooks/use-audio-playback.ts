@@ -153,6 +153,15 @@ export function useAudioPlayback({
 
     let isMounted = true
     const query = `${currentTrack.artists} - ${currentTrack.name}`
+    const cacheKey = `songless_yt_cache_${encodeURIComponent(query.toLowerCase())}`
+    const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
+
+    if (cachedId) {
+      setLoadingStep("Loading YouTube player...")
+      setYoutubeVideoId(cachedId)
+      return
+    }
+
     setIsResolvingAudio(true)
     setLoadingStep("Searching YouTube for audio source...")
     fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
@@ -165,6 +174,11 @@ export function useAudioPlayback({
       })
       .then((data) => {
         if (isMounted && data.videoId) {
+          try {
+            localStorage.setItem(cacheKey, data.videoId)
+          } catch (e) {
+            console.warn("Could not save to localStorage cache:", e)
+          }
           setLoadingStep("Loading YouTube player...")
           setYoutubeVideoId(data.videoId)
         }
@@ -190,9 +204,19 @@ export function useAudioPlayback({
   }, [currentTrack, resetPlayback])
 
   useEffect(() => {
-    if (!ytReady) return
+    if (!ytReady || !youtubeVideoId || ytPlayer) return
 
-    if (youtubeVideoId && !ytPlayer) {
+    let isMounted = true
+
+    const initPlayer = () => {
+      if (!isMounted) return
+      const container = document.getElementById("youtube-player")
+      if (!container) {
+        // Retry in 100ms if container is not mounted yet
+        setTimeout(initPlayer, 100)
+        return
+      }
+
       new window.YT.Player("youtube-player", {
         height: "200",
         width: "200",
@@ -208,6 +232,7 @@ export function useAudioPlayback({
         },
         events: {
           onReady: (event: any) => {
+            if (!isMounted) return
             try {
               event.target.unMute()
               event.target.setVolume(100)
@@ -221,6 +246,14 @@ export function useAudioPlayback({
       })
     }
 
+    initPlayer()
+
+    return () => {
+      isMounted = false
+    }
+  }, [ytReady, youtubeVideoId, ytPlayer])
+
+  useEffect(() => {
     if (ytPlayer && youtubeVideoId) {
       try {
         ytPlayer.cueVideoById(youtubeVideoId)
@@ -235,7 +268,7 @@ export function useAudioPlayback({
         // Player can be missing during route transitions.
       }
     }
-  }, [ytReady, youtubeVideoId, ytPlayer])
+  }, [youtubeVideoId, ytPlayer])
 
   const playSegment = async (positionMs = 0) => {
     if (!currentTrack) return false
