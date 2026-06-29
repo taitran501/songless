@@ -7,6 +7,8 @@ interface ProgressPanelProps {
   stageDurations: readonly number[]
   progress: number
   isPlaying: boolean
+  score: number
+  correctCount: number
 }
 
 export function ProgressPanel({
@@ -16,6 +18,8 @@ export function ProgressPanel({
   stageDurations,
   progress,
   isPlaying,
+  score,
+  correctCount,
 }: ProgressPanelProps) {
   return (
     <>
@@ -27,7 +31,15 @@ export function ProgressPanel({
               Track {currentIndex + 1} <span className="text-[#6b7280] text-sm">of {totalTracks}</span>
             </h2>
           </div>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-3 w-full sm:w-auto">
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2.5 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Score</p>
+              <p className="text-white font-extrabold text-lg">{score}</p>
+            </div>
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl px-3 py-2.5 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide">Solved</p>
+              <p className="text-white font-extrabold text-lg">{correctCount}</p>
+            </div>
             <div className="bg-[#10b981]/10 border border-[#10b981]/20 rounded-xl px-4 py-2.5 text-center">
               <p className="text-[10px] text-[#10b981] uppercase tracking-wide">Current Stage</p>
               <p className="text-white font-extrabold text-lg">{currentStage + 1} / 6</p>

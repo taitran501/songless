@@ -1,6 +1,6 @@
 "use client"
 
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Share2, SkipForward, Music } from "lucide-react"
@@ -15,6 +15,8 @@ interface GameModalProps {
   onBack?: () => void
   guesses: string[]
   trackIndex: number
+  pointsEarned?: number
+  nextLabel?: string
 }
 
 export function GameModal({
@@ -25,7 +27,9 @@ export function GameModal({
   onNext,
   onBack,
   guesses = [],
-  trackIndex
+  trackIndex,
+  pointsEarned = 0,
+  nextLabel = "NEXT SONG",
 }: GameModalProps) {
   const { toast } = useToast()
 
@@ -74,22 +78,22 @@ export function GameModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`max-w-md backdrop-blur-3xl rounded-2xl p-8 border-[1.5px] text-white flex flex-col items-center select-none outline-none ${
+      <DialogContent className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center select-none outline-none [&_[data-slot=dialog-close]]:text-white [&_[data-slot=dialog-close]]:opacity-90 ${
         correct
           ? "bg-[#090d16]/90 border-[#10b981] shadow-[0_0_25px_rgba(16,185,129,0.3),inset_0_0_15px_rgba(16,185,129,0.1)]"
           : "bg-[#090d16]/90 border-[#ef4444] shadow-[0_0_25px_rgba(239,68,68,0.3),inset_0_0_15px_rgba(239,68,68,0.1)]"
       }`}>
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className={`font-sans text-3xl font-extrabold tracking-tight ${
+        <div className="text-center mb-4 pr-8">
+          <DialogTitle className={`font-sans text-2xl sm:text-3xl font-extrabold tracking-tight ${
             correct ? "text-[#10b981] drop-shadow-[0_0_20px_rgba(16,185,129,0.7)]" : "text-[#ef4444] drop-shadow-[0_0_20px_rgba(239,68,68,0.7)]"
           }`}>
             {correct ? "SOLVED! 🎉" : "GAME OVER ❌"}
-          </h1>
+          </DialogTitle>
         </div>
 
         {/* Album Cover */}
-        <div className="w-48 h-48 md:w-56 md:h-56 rounded-lg overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] mb-6 ring-1 ring-white/20 flex items-center justify-center bg-gray-900">
+        <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-lg overflow-hidden shadow-[0_16px_36px_rgba(0,0,0,0.55)] mb-4 ring-1 ring-white/20 flex items-center justify-center bg-gray-900">
           {track?.albumImage ? (
             <img alt="Album Art" className="w-full h-full object-cover animate-fade-in" src={track.albumImage} />
           ) : (
@@ -100,40 +104,44 @@ export function GameModal({
         </div>
 
         {/* Song Metadata */}
-        <div className="text-center mb-8 w-full px-4">
-          <h2 className="font-sans text-xl text-white mb-1 font-bold truncate">{track?.name || "Unknown Track"}</h2>
+        <div className="text-center mb-5 w-full px-4">
+          <h2 className="font-sans text-lg sm:text-xl text-white mb-1 font-bold truncate">{track?.name || "Unknown Track"}</h2>
           <p className="font-sans text-sm text-[#9ca3af] truncate">{track?.artists || "Unknown Artist"}</p>
         </div>
 
         {/* Stat Summary Grid */}
-        <div className="w-full grid grid-cols-2 gap-4 mb-8">
-          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-4 text-center">
+        <div className="w-full grid grid-cols-2 gap-3 mb-5">
+          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-3 text-center">
             <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Guesses Used</p>
             <p className={`text-xl font-bold ${correct ? "text-[#10b981]" : "text-[#ef4444]"}`}>
               {correct ? `${guesses.length} / 6` : "6 / 6"}
             </p>
           </div>
-          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-4 text-center">
+          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-3 text-center">
             <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Clip Listened</p>
             <p className="text-xl text-white font-bold">{clipListened}</p>
+          </div>
+          <div className="col-span-2 bg-[#10b981]/10 rounded-lg border border-[#10b981]/25 p-3 text-center">
+            <p className="text-[10px] text-[#10b981] mb-1 uppercase tracking-[0.1em] font-semibold">Points Earned</p>
+            <p className="text-2xl text-white font-bold">{correct ? `+${pointsEarned}` : "+0"}</p>
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="w-full flex flex-col gap-4">
+        <div className="w-full flex flex-col gap-3">
           {/* Primary Action */}
           <Button
             onClick={onNext}
-            className={`w-full bg-[#10b981] hover:bg-[#10b981]/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] hover:scale-[1.02] active:scale-[0.98] text-black font-bold py-6 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2`}
+            className={`w-full bg-[#10b981] hover:bg-[#10b981]/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] hover:scale-[1.02] active:scale-[0.98] text-black font-bold py-5 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2`}
           >
-            NEXT SONG
+            {nextLabel}
             <SkipForward className="w-5 h-5 fill-black text-black" />
           </Button>
 
           {/* Secondary Action */}
           <Button
             onClick={handleShare}
-            className="w-full bg-white/[0.03] border border-white/20 text-white backdrop-blur-md font-semibold py-6 rounded-lg hover:bg-white/10 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
+            className="w-full bg-white/[0.03] border border-white/20 text-white backdrop-blur-md font-semibold py-5 rounded-lg hover:bg-white/10 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
           >
             <Share2 className="w-4 h-4" />
             SHARE RESULTS

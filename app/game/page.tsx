@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Loader2, Sparkles, X } from "lucide-react"
+import { AlertTriangle, Loader2, RotateCcw, Trophy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GameModal } from "@/components/game-modal"
 import { GuessPanel, type GuessSuggestion } from "@/components/game/guess-panel"
@@ -14,7 +14,60 @@ import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { useToast } from "@/hooks/use-toast"
 import { isCorrectGuess } from "@/lib/guessing"
-import { isSpotifyTrack, isYoutubeTrack } from "@/lib/tracks"
+import { isYoutubeTrack, type GameTrack } from "@/lib/tracks"
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSuggestion[] {
+  const normalizedQuery = normalizeSearchText(query)
+  if (normalizedQuery.length < 2) return []
+
+  return tracks
+    .map((track) => {
+      const title = normalizeSearchText(track.name)
+      const artists = normalizeSearchText(track.artists)
+      const combined = `${artists} ${title}`.trim()
+      const titleMatch = title.includes(normalizedQuery)
+      const artistMatch = artists.includes(normalizedQuery)
+      const combinedMatch = combined.includes(normalizedQuery)
+
+      if (!titleMatch && !artistMatch && !combinedMatch) return null
+
+      const score =
+        title === normalizedQuery
+          ? 0
+          : title.startsWith(normalizedQuery)
+            ? 1
+            : titleMatch
+              ? 2
+              : artistMatch
+                ? 3
+                : 4
+
+      return {
+        score,
+        suggestion: {
+          uri: track.uri,
+          name: track.name,
+          artists: track.artists,
+          albumImage: track.albumImage,
+        },
+      }
+    })
+    .filter((item): item is { score: number; suggestion: GuessSuggestion } => item !== null)
+    .sort((a, b) => a.score - b.score || a.suggestion.name.localeCompare(b.suggestion.name))
+    .slice(0, 6)
+    .map((item) => item.suggestion)
+}
 
 export default function GamePage() {
   const router = useRouter()
@@ -24,12 +77,19 @@ export default function GamePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [guess, setGuess] = useState("")
   const [showModal, setShowModal] = useState(false)
-  const [modalContent, setModalContent] = useState<{ correct: boolean; answer: string }>({ correct: false, answer: "" })
+  const [modalContent, setModalContent] = useState<{
+    correct: boolean
+    track: GameTrack | null
+    guesses: string[]
+    trackIndex: number
+    pointsEarned: number
+  }>({ correct: false, track: null, guesses: [], trackIndex: 0, pointsEarned: 0 })
   const [suggestions, setSuggestions] = useState<GuessSuggestion[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
+  const [playlistComplete, setPlaylistComplete] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -39,12 +99,17 @@ export default function GamePage() {
     setCurrentStage,
     guesses,
     setGuesses,
+    score,
+    correctCount,
+    solvedStageTotal,
+    recordCorrectGuess,
     resetRound,
+    resetGame,
     stageDurations,
+    stageScores,
   } = useGameState({ tracks, tracksLoading })
 
   const currentTrack = tracks[currentIndex]
-  const hasSpotifyTracks = tracks.some(isSpotifyTrack)
 
   const playback = useAudioPlayback({
     currentTrack,
@@ -58,12 +123,8 @@ export default function GamePage() {
       router.push("/playlist")
       return
     }
-    if (hasSpotifyTracks && !accessToken) {
-      router.push("/")
-      return
-    }
     setIsLoading(false)
-  }, [accessToken, authLoading, hasSpotifyTracks, router, tracks.length, tracksLoading])
+  }, [authLoading, router, tracks.length, tracksLoading])
 
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
@@ -75,6 +136,13 @@ export default function GamePage() {
       setIsSearching(true)
       try {
         const useSpotifySearch = Boolean(accessToken && currentTrack && !isYoutubeTrack(currentTrack))
+        const localSuggestions = useSpotifySearch ? [] : getLocalTrackSuggestions(query, tracks)
+
+        if (localSuggestions.length >= 4) {
+          setSuggestions(localSuggestions)
+          return
+        }
+
         const response = useSpotifySearch
           ? await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`, {
               headers: { Authorization: `Bearer ${accessToken}` },
@@ -94,7 +162,15 @@ export default function GamePage() {
               }))
             )
           } else {
-            setSuggestions(data)
+            const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
+            const externalSuggestions = (Array.isArray(data) ? data : [])
+              .filter((suggestion: GuessSuggestion) => {
+                if (!suggestion?.uri || seen.has(suggestion.uri)) return false
+                seen.add(suggestion.uri)
+                return true
+              })
+              .slice(0, Math.max(0, 6 - localSuggestions.length))
+            setSuggestions([...localSuggestions, ...externalSuggestions])
           }
         } else {
           setSuggestions([])
@@ -106,7 +182,7 @@ export default function GamePage() {
         setIsSearching(false)
       }
     },
-    [accessToken, currentTrack]
+    [accessToken, currentTrack, tracks]
   )
 
   useEffect(() => {
@@ -131,8 +207,8 @@ export default function GamePage() {
       }
     }
 
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+    document.addEventListener("click", handleClickOutside)
+    return () => document.removeEventListener("click", handleClickOutside)
   }, [])
 
   const resetInput = () => {
@@ -155,12 +231,25 @@ export default function GamePage() {
     setGuesses(newGuesses)
 
     if (isCorrectGuess({ guess, target: currentTrack, selectedUri, selectedSuggestion })) {
-      setModalContent({ correct: true, answer: currentTrack.name })
+      recordCorrectGuess(currentStage)
+      setModalContent({
+        correct: true,
+        track: currentTrack,
+        guesses: newGuesses,
+        trackIndex: currentIndex,
+        pointsEarned: stageScores[currentStage] || 0,
+      })
       setShowModal(true)
     } else if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
-      setModalContent({ correct: false, answer: currentTrack.name })
+      setModalContent({
+        correct: false,
+        track: currentTrack,
+        guesses: newGuesses,
+        trackIndex: currentIndex,
+        pointsEarned: 0,
+      })
       setShowModal(true)
     }
 
@@ -177,7 +266,13 @@ export default function GamePage() {
     if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
-      setModalContent({ correct: false, answer: currentTrack.name })
+      setModalContent({
+        correct: false,
+        track: currentTrack,
+        guesses: newGuesses,
+        trackIndex: currentIndex,
+        pointsEarned: 0,
+      })
       setShowModal(true)
     }
 
@@ -189,16 +284,32 @@ export default function GamePage() {
     await stopRoundPlayback()
 
     if (currentIndex < tracks.length - 1) {
-      setCurrentIndex(currentIndex + 1)
-      resetRound()
+      window.setTimeout(() => {
+        setCurrentIndex(currentIndex + 1)
+        resetRound()
+      }, 220)
       return
     }
 
+    window.setTimeout(() => {
+      resetRound()
+      setPlaylistComplete(true)
+    }, 220)
+  }
+
+  const handleExitPlaylist = () => {
+    playback.resetPlayback()
     clearSavedGame()
     router.push("/playlist")
   }
 
-  const handleExitPlaylist = () => {
+  const handleReplayPlaylist = async () => {
+    await stopRoundPlayback()
+    resetGame()
+    setPlaylistComplete(false)
+  }
+
+  const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
     clearSavedGame()
     router.push("/playlist")
@@ -235,16 +346,65 @@ export default function GamePage() {
     )
   }
 
-  if (currentIndex >= tracks.length) {
+  if (playlistComplete) {
+    const averageStage = correctCount > 0 ? (solvedStageTotal / correctCount).toFixed(1) : "-"
+    const maxScore = tracks.length * stageScores[0]
+    const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
+
     return (
-      <div className="min-h-screen bg-[#030712] text-gray-100 flex items-center justify-center p-4">
-        <div className="text-center max-w-md bg-gray-900/40 p-8 rounded-2xl">
-          <Sparkles className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
-          <h2 className="text-3xl font-extrabold mb-2">Playlist Completed!</h2>
-          <Button onClick={handleExitPlaylist} className="w-full h-12">Play Another</Button>
+      <div
+        className="min-h-screen bg-[#020617] text-[#dce5d9] flex items-center justify-center p-4 sm:p-6 font-sans"
+        style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
+      >
+        <div className="w-full max-w-xl bg-[#090d16]/70 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl ring-1 ring-white/5">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center mb-4">
+              <Trophy className="w-9 h-9 text-[#10b981]" />
+            </div>
+            <p className="font-display text-xs font-semibold text-[#10b981] uppercase tracking-widest mb-2">Playlist Complete</p>
+            <h2 className="text-3xl font-extrabold text-white font-display">Final Score</h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="col-span-2 bg-[#10b981]/10 border border-[#10b981]/25 rounded-xl p-5 text-center">
+              <p className="text-[10px] text-[#10b981] uppercase tracking-wide font-semibold">Score</p>
+              <p className="text-4xl font-extrabold text-white">{score}</p>
+              <p className="text-xs text-[#9ca3af] mt-1">Max {maxScore}</p>
+            </div>
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Solved</p>
+              <p className="text-2xl font-extrabold text-white">{correctCount} / {tracks.length}</p>
+            </div>
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Accuracy</p>
+              <p className="text-2xl font-extrabold text-white">{accuracy}%</p>
+            </div>
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Average Stage</p>
+              <p className="text-2xl font-extrabold text-white">{averageStage}</p>
+            </div>
+            <div className="bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
+              <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Tracks</p>
+              <p className="text-2xl font-extrabold text-white">{tracks.length}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
+              <RotateCcw className="w-4 h-4 mr-2" />
+              REPLAY PLAYLIST
+            </Button>
+            <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
+              LOAD ANOTHER
+            </Button>
+          </div>
         </div>
       </div>
     )
+  }
+
+  if (currentIndex >= tracks.length) {
+    return null
   }
 
   return (
@@ -288,6 +448,8 @@ export default function GamePage() {
           stageDurations={stageDurations}
           progress={playback.progress}
           isPlaying={playback.isPlaying}
+          score={score}
+          correctCount={correctCount}
         />
 
         <PlaybackPanel
@@ -330,14 +492,16 @@ export default function GamePage() {
           isOpen={showModal}
           onClose={() => setShowModal(false)}
           correct={modalContent.correct}
-          track={currentTrack}
+          track={modalContent.track}
           onNext={handleNextSong}
           onBack={() => {
             setShowModal(false)
             router.push("/playlist")
           }}
-          guesses={guesses}
-          trackIndex={currentIndex}
+          guesses={modalContent.guesses}
+          trackIndex={modalContent.trackIndex}
+          pointsEarned={modalContent.pointsEarned}
+          nextLabel={modalContent.trackIndex === tracks.length - 1 ? "VIEW SUMMARY" : "NEXT SONG"}
         />
       </div>
     </div>

@@ -111,6 +111,32 @@ function readText(runs: any): string {
     .trim()
 }
 
+function cleanSuggestionTitle(title: string): string {
+  return title
+    .replace(/\s*\|\s*(official\s*)?(music\s*)?(video|audio|lyrics?).*$/i, "")
+    .replace(/\s*-\s*(official\s*)?(music\s*)?(video|audio|lyrics?|lyric video|mv).*$/i, "")
+    .replace(/\s*\((official\s*)?(music\s*)?(video|audio|lyrics?|lyric video|mv).*?\)/gi, "")
+    .replace(/\s*\[(official\s*)?(music\s*)?(video|audio|lyrics?|lyric video|mv).*?\]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function splitArtistAndTitle(title: string, fallbackArtist: string) {
+  const separators = [" - ", " – ", " — "]
+  for (const separator of separators) {
+    const index = title.indexOf(separator)
+    if (index <= 0) continue
+
+    const artist = title.slice(0, index).trim()
+    const name = title.slice(index + separator.length).trim()
+    if (artist && name) {
+      return { artist, name }
+    }
+  }
+
+  return { artist: fallbackArtist, name: title }
+}
+
 function findAlertText(data: any): string | null {
   const alerts = data?.alerts
   if (!Array.isArray(alerts)) return null
@@ -229,21 +255,23 @@ export function parseYouTubeSearchHtml(html: string, limit = 6): YouTubeSearchSu
   return collectVideoRenderers(data)
     .map((renderer): YouTubeSearchSuggestion | null => {
       const videoId = renderer.videoId
-      const title = readText(renderer.title?.runs) || renderer.title?.simpleText || ""
-      const artist =
+      const rawTitle = readText(renderer.title?.runs) || renderer.title?.simpleText || ""
+      const rawArtist =
         readText(renderer.ownerText?.runs) ||
         readText(renderer.shortBylineText?.runs) ||
         "YouTube"
       const thumbnails = renderer.thumbnail?.thumbnails
 
-      if (!videoId || !title || seen.has(videoId)) return null
+      if (!videoId || !rawTitle || seen.has(videoId)) return null
       seen.add(videoId)
+
+      const parsed = splitArtistAndTitle(cleanSuggestionTitle(rawTitle), rawArtist)
 
       return {
         videoId,
         uri: `youtube:${videoId}`,
-        name: title,
-        artists: artist,
+        name: parsed.name,
+        artists: parsed.artist,
         albumImage: Array.isArray(thumbnails) && thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : null,
       }
     })

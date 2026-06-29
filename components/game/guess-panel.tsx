@@ -105,7 +105,7 @@ export function GuessPanel({
           {isSearching && <Loader2 className="absolute right-4 top-3.5 w-5 h-5 text-[#10b981] animate-spin" />}
 
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute z-50 left-0 right-0 mt-2 bg-[#090d16] border border-white/10 rounded-2xl max-h-60 overflow-y-auto divide-y divide-white/5 shadow-2xl">
+            <div className="mt-2 bg-[#090d16] border border-white/10 rounded-2xl max-h-60 overflow-y-auto divide-y divide-white/5 shadow-2xl">
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.uri}
@@ -129,7 +129,7 @@ export function GuessPanel({
           )}
 
           {showSuggestions && !isSearching && guess.trim().length > 1 && suggestions.length === 0 && (
-            <div className="absolute z-50 left-0 right-0 mt-2 bg-[#090d16] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
+            <div className="mt-2 bg-[#090d16] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
               <p className="text-sm text-[#6b7280]">No matching songs found.</p>
             </div>
           )}

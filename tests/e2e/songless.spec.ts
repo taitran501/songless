@@ -490,6 +490,7 @@ test("falls back from Spotify no-preview tracks to YouTube playback", async ({ p
 })
 
 test("lets a guest load a public Spotify playlist", async ({ page }) => {
+  await mockHtmlAudio(page)
   await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
     await route.fulfill({
       status: 200,
@@ -509,9 +510,14 @@ test("lets a guest load a public Spotify playlist", async ({ page }) => {
   await expect(page.getByText(/playlist loaded/i)).toBeVisible()
   await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible()
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
+
+  await page.getByRole("button", { name: "Start Game" }).click()
+  await expect(page.getByText("Track 1 of 2")).toBeVisible()
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__audioEvents.play)).toBe(1)
 })
 
-test("does not reveal local playlist suggestions in guest YouTube mode", async ({ page }) => {
+test("prioritizes current playlist suggestions in guest YouTube mode", async ({ page }) => {
   await mockYouTubeIframe(page)
   await seedStorage(page, {
     game_tracks: JSON.stringify(mockYoutubeTracks),
@@ -537,8 +543,8 @@ test("does not reveal local playlist suggestions in guest YouTube mode", async (
   await expect(page.getByText("Track 1 of 1")).toBeVisible()
 
   await page.getByPlaceholder("Know the song? Search artist or title...").fill("Binz")
+  await expect(page.locator("button", { hasText: "Em" })).toBeVisible()
   await expect(page.getByText("Other Song")).toBeVisible()
-  await expect(page.locator("button", { hasText: "Em" })).toHaveCount(0)
 })
 
 test("accepts a selected YouTube search suggestion in guest mode", async ({ page }) => {
@@ -567,10 +573,10 @@ test("accepts a selected YouTube search suggestion in guest mode", async ({ page
   await expect(page.getByText("Track 1 of 1")).toBeVisible()
 
   await page.getByPlaceholder("Know the song? Search artist or title...").fill("Binz")
-  await page.getByRole("button", { name: /Em/ }).click()
+  await page.getByRole("button", { name: "Em Binz" }).click()
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
 
-  await expect(page.getByText(/solved/i)).toBeVisible()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
 })
 
 test("shows error when YouTube playlist fails to load", async ({ page }) => {
@@ -642,8 +648,25 @@ test("supports the main game controls with mocked Spotify playback", async ({ pa
   await page.getByPlaceholder("Know the song? Search artist or title...").fill("First Song")
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
 
-  await expect(page.getByText(/solved/i)).toBeVisible()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await expect(page.getByText("+80")).toBeVisible()
   await page.getByRole("button", { name: "NEXT SONG" }).click()
+  await page.waitForTimeout(100)
+  await expect(page.getByText("Second Song")).toHaveCount(0)
 
   await expect(page.getByText("Track 2 of 2")).toBeVisible()
+  await expect(page.getByText(/^80$/)).toBeVisible()
+
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("Second Song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await expect(page.getByText("+100")).toBeVisible()
+  await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
+
+  await expect(page.getByText("Final Score")).toBeVisible()
+  await expect(page.getByText("180")).toBeVisible()
+  await expect(page.getByText("2 / 2")).toBeVisible()
+  await expect(page.getByRole("button", { name: "REPLAY PLAYLIST" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "LOAD ANOTHER" })).toBeVisible()
 })

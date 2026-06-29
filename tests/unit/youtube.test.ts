@@ -73,7 +73,7 @@ describe("YouTube parser", () => {
     assert.equal(result.tracks[0].duration_ms, 296000)
   })
 
-  it("parses YouTube search suggestions", () => {
+  it("parses and cleans YouTube search suggestions", () => {
     const html = `<html><script>var ytInitialData = ${JSON.stringify({
       contents: {
         sectionListRenderer: {
@@ -84,8 +84,8 @@ describe("YouTube parser", () => {
                   {
                     videoRenderer: {
                       videoId: "6uVJqD2hSGQ",
-                      title: { runs: [{ text: "Em" }] },
-                      ownerText: { runs: [{ text: "Binz" }] },
+                      title: { runs: [{ text: "Binz - Em (Official Music Video)" }] },
+                      ownerText: { runs: [{ text: "Binz Official" }] },
                       thumbnail: {
                         thumbnails: [{ url: "https://i.ytimg.com/vi/6uVJqD2hSGQ/hqdefault.jpg" }],
                       },
