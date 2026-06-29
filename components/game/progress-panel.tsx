@@ -53,38 +53,42 @@ export function ProgressPanel({
       </div>
 
       <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
-        <div className="relative mb-3">
+        <div className="relative mb-2 pt-8">
+          {/* Floating current duration indicator */}
+          <div 
+            className="absolute top-0 flex flex-col items-center transition-all duration-300 ease-out pointer-events-none"
+            style={{ 
+              left: `${((currentStage + 1) / 6) * 100}%`,
+              transform: "translateX(-50%)"
+            }}
+          >
+            <span className="bg-[#10b981] text-black text-[10px] sm:text-xs font-extrabold px-2.5 py-0.5 rounded-md shadow-[0_0_12px_rgba(16,185,129,0.3)] whitespace-nowrap mb-0.5">
+              {(stageDurations[currentStage] / 1000).toFixed(1)}s
+            </span>
+            <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-[#10b981]" />
+          </div>
+
           <div className="bg-[#030712]/90 rounded-full h-4 overflow-hidden relative border border-white/5">
             {/* Unlocked background portion */}
             <div 
-              className="absolute left-0 top-0 bottom-0 bg-white/[0.03]" 
-              style={{ width: `${(stageDurations[currentStage] / 15000) * 100}%` }} 
+              className="absolute left-0 top-0 bottom-0 bg-white/[0.04]" 
+              style={{ width: `${((currentStage + 1) / 6) * 100}%` }} 
             />
             {/* Active green playhead */}
             <div
               className={`h-full absolute left-0 top-0 bottom-0 bg-[#10b981] rounded-full ${isPlaying ? "shadow-[0_0_18px_rgba(16,185,129,0.65)]" : ""}`}
               style={{
-                width: `${(progress / 100) * (stageDurations[currentStage] / 15000) * 100}%`,
+                width: `${(progress / 100) * ((currentStage + 1) / 6) * 100}%`,
                 transition: isPlaying ? "width 50ms linear" : "none",
               }}
             />
             {/* Separators */}
             <div className="absolute inset-0 pointer-events-none">
-              {[3.33, 6.67, 13.33, 26.67, 53.33].map((pos) => (
+              {[16.67, 33.33, 50.0, 66.67, 83.33].map((pos) => (
                 <div key={pos} className="absolute top-0 bottom-0 w-[1px] bg-[#020617]/90" style={{ left: `${pos}%` }} />
               ))}
             </div>
           </div>
-        </div>
-        {/* Dynamic aligned & staggered labels */}
-        <div className="relative w-full h-9 text-[10px] sm:text-xs font-semibold text-[#6b7280]">
-          <span className="absolute left-0 top-0">0s</span>
-          <span className="absolute top-4" style={{ left: "3.33%", transform: "translateX(-50%)" }}>0.5s</span>
-          <span className="absolute top-0" style={{ left: "6.67%", transform: "translateX(-50%)" }}>1s</span>
-          <span className="absolute top-4" style={{ left: "13.33%", transform: "translateX(-50%)" }}>2s</span>
-          <span className="absolute top-0" style={{ left: "26.67%", transform: "translateX(-50%)" }}>4s</span>
-          <span className="absolute top-4" style={{ left: "53.33%", transform: "translateX(-50%)" }}>8s</span>
-          <span className="absolute right-0 top-0 text-[#10b981] font-bold">15s</span>
         </div>
       </div>
     </>
