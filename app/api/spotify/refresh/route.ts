@@ -1,9 +1,21 @@
-import { NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
+import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
-    const { refresh_token } = await request.json()
+    let refresh_token = ""
+    try {
+      const body = await request.json()
+      refresh_token = body?.refresh_token || ""
+    } catch {
+      // Body is empty or not JSON, fallback to cookie
+    }
+
+    if (!refresh_token) {
+      const cookieStore = await cookies()
+      refresh_token = cookieStore.get("spotify_refresh_token")?.value || ""
+    }
 
     if (!refresh_token) {
       return NextResponse.json({ error: "Refresh token required" }, { status: 400 })
@@ -28,13 +40,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to refresh token" }, { status: 400 })
     }
 
+    const nextAccessToken = data.access_token
+    const nextRefreshToken = data.refresh_token || refresh_token
+    const expiresIn = data.expires_in
+
+    const cookieStore = await cookies()
+    cookieStore.set("spotify_access_token", nextAccessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: expiresIn,
+      path: "/",
+    })
+    cookieStore.set("spotify_refresh_token", nextRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60,
+      path: "/",
+    })
+
+    const expiresAt = Date.now() + expiresIn * 1000
+    cookieStore.set("spotify_expires_at", expiresAt.toString(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60,
+      path: "/",
+    })
+
     return NextResponse.json({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token || refresh_token, // Use new refresh token if provided, otherwise keep old one
-      expires_in: data.expires_in
+      access_token: nextAccessToken,
+      refresh_token: nextRefreshToken,
+      expires_in: expiresIn
     })
   } catch (error) {
     console.error("Error refreshing token:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-} 
+}

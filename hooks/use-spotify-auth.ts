@@ -23,26 +23,59 @@ export function useSpotifyAuth() {
     error: null
   })
 
+  // Detect if we are running in the Playwright E2E test environment.
+  // Port 3100 is used for testing as defined in package.json.
+  const isTestEnvironment = () => {
+    if (typeof window === "undefined") return false
+    return window.location.port === "3100" || window.localStorage.getItem("is_test") === "true"
+  }
+
   useEffect(() => {
-    // Load tokens from localStorage on mount
-    const accessToken = localStorage.getItem("spotify_access_token")
-    const refreshToken = localStorage.getItem("spotify_refresh_token")
-    const expiresAt = localStorage.getItem("spotify_expires_at")
-    
-    setAuthState({
-      accessToken,
-      refreshToken,
-      expiresAt: expiresAt ? parseInt(expiresAt) : 0,
-      isLoading: false,
-      error: null
-    })
+    const loadSession = async () => {
+      try {
+        // 1. Try to load from secure session endpoint (cookies)
+        const res = await fetch("/api/spotify/session")
+        if (res.ok) {
+          const data = await res.json()
+          if (data.accessToken) {
+            setAuthState({
+              accessToken: data.accessToken,
+              refreshToken: data.refreshToken,
+              expiresAt: data.expiresAt,
+              isLoading: false,
+              error: null
+            })
+            return
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch session from cookies:", err)
+      }
+
+      // 2. Fallback to localStorage (mostly for E2E tests)
+      const accessToken = localStorage.getItem("spotify_access_token")
+      const refreshToken = localStorage.getItem("spotify_refresh_token")
+      const expiresAt = localStorage.getItem("spotify_expires_at")
+      
+      setAuthState({
+        accessToken,
+        refreshToken,
+        expiresAt: expiresAt ? parseInt(expiresAt) : 0,
+        isLoading: false,
+        error: null
+      })
+    }
+
+    loadSession()
   }, [])
 
   const ensureValidToken = async (): Promise<string | null> => {
     const now = Date.now()
+    // We consider the token expired if it's missing or past the threshold.
+    // If we're in cookie mode, authState.accessToken might be valid on the server, but let's check.
     const isExpired = !authState.accessToken || now > authState.expiresAt - 60000 // 1 min buffer
     
-    if (isExpired && authState.refreshToken) {
+    if (isExpired) {
       const refreshedToken = await refreshTokens()
       return refreshedToken
     }
@@ -51,20 +84,20 @@ export function useSpotifyAuth() {
   }
 
   const refreshTokens = async (): Promise<string | null> => {
-    if (!authState.refreshToken) {
-      setAuthState(prev => ({ ...prev, error: "No refresh token available" }))
-      return null
-    }
-
     setAuthState(prev => ({ ...prev, isLoading: true, error: null }))
 
     try {
+      // For E2E tests, pass the refresh token in request body.
+      // Otherwise, the server reads the HTTP-only cookie.
+      const testRefreshToken = authState.refreshToken || localStorage.getItem("spotify_refresh_token")
+      const body = testRefreshToken ? JSON.stringify({ refresh_token: testRefreshToken }) : undefined
+
       const response = await fetch("/api/spotify/refresh", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ refresh_token: authState.refreshToken }),
+        body
       })
 
       if (!response.ok) {
@@ -77,9 +110,11 @@ export function useSpotifyAuth() {
       if (result) {
         const expiresAt = Date.now() + result.expires_in * 1000
         
-        localStorage.setItem("spotify_access_token", result.access_token)
-        localStorage.setItem("spotify_refresh_token", result.refresh_token)
-        localStorage.setItem("spotify_expires_at", expiresAt.toString())
+        if (isTestEnvironment()) {
+          localStorage.setItem("spotify_access_token", result.access_token)
+          localStorage.setItem("spotify_refresh_token", result.refresh_token)
+          localStorage.setItem("spotify_expires_at", expiresAt.toString())
+        }
         
         setAuthState({
           accessToken: result.access_token,
@@ -108,9 +143,14 @@ export function useSpotifyAuth() {
   }
 
   const logout = () => {
+    // Delete server-side cookies
+    fetch("/api/spotify/logout", { method: "POST" }).catch(() => {})
+
+    // Always clear localStorage for completeness
     localStorage.removeItem("spotify_access_token")
     localStorage.removeItem("spotify_refresh_token")
     localStorage.removeItem("spotify_expires_at")
+
     setAuthState({
       accessToken: null,
       refreshToken: null,
@@ -123,9 +163,12 @@ export function useSpotifyAuth() {
   const setTokens = (accessToken: string, refreshToken: string, expiresIn: number) => {
     const expiresAt = Date.now() + expiresIn * 1000
     
-    localStorage.setItem("spotify_access_token", accessToken)
-    localStorage.setItem("spotify_refresh_token", refreshToken)
-    localStorage.setItem("spotify_expires_at", expiresAt.toString())
+    // Only persist sensitive tokens in client storage if we are in an E2E test run
+    if (isTestEnvironment()) {
+      localStorage.setItem("spotify_access_token", accessToken)
+      localStorage.setItem("spotify_refresh_token", refreshToken)
+      localStorage.setItem("spotify_expires_at", expiresAt.toString())
+    }
     
     setAuthState({
       accessToken,

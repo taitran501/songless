@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
+import { cookies } from "next/headers"
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,6 +24,38 @@ export async function POST(request: NextRequest) {
       console.error("Spotify error:", data.error)
       return NextResponse.json({ error: data.error }, { status: 400 })
     }
+
+    const cookieStore = await cookies()
+    
+    // Set Access Token cookie
+    cookieStore.set("spotify_access_token", data.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: data.expires_in,
+      path: "/",
+    })
+
+    // Set Refresh Token cookie if present
+    if (data.refresh_token) {
+      cookieStore.set("spotify_refresh_token", data.refresh_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 30 * 24 * 60 * 60, // 30 days
+        path: "/",
+      })
+    }
+
+    // Set Expires At cookie to help keep client and server in sync
+    const expiresAt = Date.now() + data.expires_in * 1000
+    cookieStore.set("spotify_expires_at", expiresAt.toString(), {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60, // 30 days
+      path: "/",
+    })
 
     return NextResponse.json({
       access_token: data.access_token,

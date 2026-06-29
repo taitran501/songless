@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import type { GameTrack } from "@/lib/tracks"
 import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
+import { cookies } from "next/headers"
 
 async function getClientCredentialsToken() {
   if (!SPOTIFY_CONFIG.CLIENT_ID || !SPOTIFY_CONFIG.CLIENT_SECRET) {
@@ -45,7 +46,13 @@ export async function GET(request: NextRequest) {
     }
 
     const authHeader = request.headers.get("authorization")
-    const userAccessToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : ""
+    let userAccessToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : ""
+
+    if (!userAccessToken) {
+      const cookieStore = await cookies()
+      userAccessToken = cookieStore.get("spotify_access_token")?.value || ""
+    }
+
     const accessToken = userAccessToken || (await getClientCredentialsToken())
 
     if (!accessToken) {

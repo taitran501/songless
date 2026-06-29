@@ -4,22 +4,24 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, Loader2, Music, Youtube } from "lucide-react"
+import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 
 export default function LoginPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [initializingSpotify, setInitializingSpotify] = useState(false)
+  const { accessToken, isLoading: isAuthLoading } = useSpotifyAuth()
 
   useEffect(() => {
     // Check if user already has access token on mount
-    const accessToken = localStorage.getItem("spotify_access_token")
+    if (isAuthLoading) return
     if (accessToken) {
       router.push("/playlist")
     } else {
       setLoading(false)
     }
-  }, [router])
+  }, [accessToken, isAuthLoading, router])
 
   const handleSpotifyLogin = async () => {
     setInitializingSpotify(true)
