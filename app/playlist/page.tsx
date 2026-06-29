@@ -12,14 +12,20 @@ import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
-import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube } from "lucide-react"
+import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shuffleEnabled, setShuffleEnabled] = useState(false)
-  const [recentPlaylists, setRecentPlaylists] = useState<{ id: string; name: string }[]>([])
+  const [trackCount, setTrackCount] = useState<string>("20")
+  const [recentPlaylists, setRecentPlaylists] = useState<{ 
+    id: string; 
+    name: string; 
+    trackCount?: number; 
+    source?: "spotify" | "youtube";
+  }[]>([])
   const router = useRouter()
   const { tracks, setTracks } = useTracks()
   const { accessToken, logout } = useSpotifyAuth()
@@ -78,12 +84,12 @@ export default function PlaylistPage() {
     setError(null)
     
     try {
-      const isYT = isYouTubePlaylistInput(playlistInput || playlistId)
+      const isYT = isYouTubePlaylistInput(playlistId)
       let data: GameTrack[] = []
       let playlistName = `Playlist #${playlistId}`
 
       if (isYT) {
-        const response = await fetch(`/api/youtube/playlist?url=${encodeURIComponent(playlistInput || playlistId)}`)
+        const response = await fetch(`/api/youtube/playlist?url=${encodeURIComponent(playlistId)}`)
 
         if (!response.ok) {
           const errorData = await response.json()
@@ -134,13 +140,19 @@ export default function PlaylistPage() {
 
       // Save tracks to global store
       setTracks(data)
+      localStorage.setItem("full_playlist_tracks", JSON.stringify(data))
       localStorage.setItem("current_playlist_id", playlistId)
 
       // Save to recent playlists in localStorage
       const saved = localStorage.getItem("recent_playlists")
       let recent = saved ? JSON.parse(saved) : []
       recent = recent.filter((p: any) => p.id !== playlistId)
-      recent.unshift({ id: playlistId, name: playlistName })
+      recent.unshift({ 
+        id: playlistId, 
+        name: playlistName,
+        trackCount: data.length,
+        source: isYouTubePlaylistInput(playlistId) ? "youtube" : "spotify"
+      })
       recent = recent.slice(0, 6) // Keep last 6
       localStorage.setItem("recent_playlists", JSON.stringify(recent))
       setRecentPlaylists(recent)
@@ -150,6 +162,22 @@ export default function PlaylistPage() {
       setError(error instanceof Error ? error.message : "Error fetching playlist")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteRecentPlaylist = (playlistId: string) => {
+    const saved = localStorage.getItem("recent_playlists")
+    if (saved) {
+      try {
+        let recent = JSON.parse(saved)
+        if (Array.isArray(recent)) {
+          recent = recent.filter((p: any) => p.id !== playlistId)
+          localStorage.setItem("recent_playlists", JSON.stringify(recent))
+          setRecentPlaylists(recent)
+        }
+      } catch (err) {
+        console.error("Error deleting recent playlist:", err)
+      }
     }
   }
 
@@ -282,24 +310,89 @@ export default function PlaylistPage() {
             </CardHeader>
             <CardContent className="pt-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {recentPlaylists.map((p) => (
-                  <Button
-                    key={p.id}
-                    variant="outline"
-                    onClick={() => {
-                      setPlaylistInput(p.id)
-                      void loadPlaylistById(p.id)
-                    }}
-                    className="justify-start text-left bg-[#030712]/60 hover:bg-[#030712]/90 text-white border-white/5 hover:border-[#10b981]/30 transition-all duration-300 rounded-xl py-6 px-4 h-auto w-full group relative overflow-hidden"
-                    disabled={loading}
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/0 via-[#10b981]/5 to-[#10b981]/0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div className="truncate w-full relative z-10">
-                      <p className="font-bold truncate text-sm text-gray-200 group-hover:text-[#10b981] transition-colors">{p.name}</p>
-                      <p className="text-xs text-gray-500 truncate mt-1">ID: {p.id}</p>
+                {recentPlaylists.map((p) => {
+                  const inferredSource = p.source || (isYouTubePlaylistInput(p.id) ? "youtube" : "spotify")
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between bg-[#030712]/60 hover:bg-[#030712]/90 text-white border border-white/5 hover:border-[#10b981]/30 transition-all duration-300 rounded-xl p-4 w-full group relative overflow-hidden"
+                    >
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/0 via-[#10b981]/5 to-[#10b981]/0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      
+                      {/* Left: Clickable Playlist Info */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlaylistInput(p.id)
+                          void loadPlaylistById(p.id)
+                        }}
+                        className="flex items-center space-x-3 flex-1 text-left min-w-0 disabled:opacity-50"
+                        disabled={loading}
+                      >
+                        <div className={`p-2 rounded-lg shrink-0 ${
+                          inferredSource === "youtube"
+                            ? "bg-red-500/10 text-red-400 group-hover:bg-red-500/20"
+                            : "bg-[#10b981]/10 text-[#10b981] group-hover:bg-[#10b981]/20"
+                        } transition-colors`}>
+                          {inferredSource === "youtube" ? (
+                            <Youtube className="w-5 h-5" />
+                          ) : (
+                            <Music className="w-5 h-5" />
+                          )}
+                        </div>
+                        <div className="truncate flex-1 min-w-0">
+                          <p className="font-bold truncate text-sm text-gray-200 group-hover:text-[#10b981] transition-colors">{p.name}</p>
+                          <div className="flex items-center space-x-2 mt-1 flex-wrap gap-y-1">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 font-medium">
+                              {p.trackCount !== undefined ? `${p.trackCount} ${p.trackCount === 1 ? "song" : "songs"}` : "Unknown count"}
+                            </span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold tracking-wide uppercase ${
+                              inferredSource === "youtube"
+                                ? "bg-red-500/10 text-red-400"
+                                : "bg-[#10b981]/10 text-[#10b981]"
+                            }`}>
+                              {inferredSource === "youtube" ? "YouTube" : "Spotify"}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Right: Actions */}
+                      <div className="flex items-center space-x-1.5 ml-2 relative z-20 shrink-0">
+                        {/* Refresh Button */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void loadPlaylistById(p.id)
+                          }}
+                          disabled={loading}
+                          className="h-8 w-8 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all active:scale-95"
+                          title="Refresh Playlist"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                        </Button>
+                        
+                        {/* Delete Button */}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteRecentPlaylist(p.id)
+                          }}
+                          className="h-8 w-8 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all active:scale-95"
+                          title="Remove Playlist"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-                  </Button>
-                ))}
+                  )
+                })}
               </div>
             </CardContent>
           </Card>
@@ -320,6 +413,48 @@ export default function PlaylistPage() {
                 </div>
               </div>
               
+              {/* Track Count Option */}
+              <div className="flex flex-col gap-3 p-4 bg-[#030712]/60 rounded-xl border border-white/5 mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-[#10b981]/10 p-2 rounded-lg">
+                    <Music className="w-5 h-5 text-[#10b981]" />
+                  </div>
+                  <div>
+                    <Label className="text-white font-semibold text-sm">
+                      Number of Tracks
+                    </Label>
+                    <p className="text-gray-400 text-xs">
+                      Choose how many tracks to include in this round
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {["5", "10", "20", "50", "all"].map((val) => {
+                    const isSelected = trackCount === val
+                    const numVal = parseInt(val)
+                    const isDisabled = val !== "all" && tracks.length < numVal
+
+                    return (
+                      <Button
+                        key={val}
+                        type="button"
+                        variant={isSelected ? "default" : "outline"}
+                        onClick={() => setTrackCount(val)}
+                        disabled={isDisabled}
+                        className={`flex-1 min-w-[60px] h-10 text-xs font-semibold uppercase tracking-wider transition-all duration-300 rounded-lg active:scale-95 ${
+                          isSelected
+                            ? "bg-[#10b981] hover:bg-[#10b981]/90 text-black shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                            : "bg-transparent hover:bg-white/5 text-gray-300 hover:text-white border-white/10"
+                        }`}
+                      >
+                        {val === "all" ? "All" : val}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
               {/* Shuffle Option */}
               <div className="flex items-center justify-between p-4 bg-[#030712]/60 rounded-xl border border-white/5 mb-6">
                 <div className="flex items-center space-x-3">
@@ -345,10 +480,37 @@ export default function PlaylistPage() {
 
               <Button 
                 onClick={() => {
-                  if (shuffleEnabled) {
-                    const shuffledTracks = [...tracks].sort(() => Math.random() - 0.5)
-                    setTracks(shuffledTracks)
+                  const savedFull = localStorage.getItem("full_playlist_tracks")
+                  let sourceTracks = tracks
+                  if (savedFull) {
+                    try {
+                      const parsed = JSON.parse(savedFull)
+                      if (Array.isArray(parsed) && parsed.length > 0) {
+                        sourceTracks = parsed
+                      }
+                    } catch {}
                   }
+
+                  let processedTracks = [...sourceTracks]
+
+                  // 1. Shuffle first if enabled
+                  if (shuffleEnabled) {
+                    processedTracks = processedTracks.sort(() => Math.random() - 0.5)
+                  }
+
+                  // 2. Slice to chosen track count
+                  if (trackCount !== "all") {
+                    const limit = parseInt(trackCount)
+                    if (!isNaN(limit)) {
+                      processedTracks = processedTracks.slice(0, limit)
+                    }
+                  }
+
+                  // 3. Clear existing game states to avoid starting with a pre-existing state
+                  localStorage.removeItem("game_state")
+                  
+                  // 4. Save processed tracks to store & redirect
+                  setTracks(processedTracks)
                   router.push("/game")
                 }}
                 className="bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold text-base h-14 w-full rounded-xl shadow-lg hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
