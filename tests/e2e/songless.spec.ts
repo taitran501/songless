@@ -372,7 +372,7 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Play Guest (YouTube Playlist)" }).click()
+  await page.getByRole("button", { name: "Play Guest" }).click()
   await expect(page.getByText("Guest mode is active")).toBeVisible()
 
   await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
@@ -489,13 +489,26 @@ test("falls back from Spotify no-preview tracks to YouTube playback", async ({ p
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.cue)).toContain("6uVJqD2hSGQ")
 })
 
-test("shows a Spotify connection error when a guest loads a Spotify playlist", async ({ page }) => {
+test("lets a guest load a public Spotify playlist", async ({ page }) => {
+  await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: {
+        "x-playlist-name": encodeURIComponent("Public Spotify Playlist"),
+      },
+      body: JSON.stringify(mockTracks),
+    })
+  })
+
   await page.goto("/playlist")
 
   await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://open.spotify.com/playlist/playlist123")
   await page.getByRole("button", { name: "Load Playlist" }).click()
 
-  await expect(page.getByText("Connect Spotify to load Spotify playlists.")).toBeVisible()
+  await expect(page.getByText(/playlist loaded/i)).toBeVisible()
+  await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
 })
 
 test("does not reveal local playlist suggestions in guest YouTube mode", async ({ page }) => {

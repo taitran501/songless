@@ -182,14 +182,14 @@ export default function LoginPage() {
 
             <h3 className="font-display text-2xl font-bold text-white mb-3">Guest Mode</h3>
             <p className="text-[#bccbb9] text-sm leading-relaxed mb-8 flex-1 max-w-[280px]">
-              Jump straight in using curated public playlists. Quick, intense, anonymous.
+              Jump straight in with YouTube or public Spotify playlists. Quick, intense, anonymous.
             </p>
 
             <Button
               onClick={handleGuestPlay}
               className="w-full h-12 bg-[#1a221a]/60 hover:bg-[#242c24] border border-[#3d4a3d]/50 text-white font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
             >
-              Play Guest (YouTube Playlist)
+              Play Guest
             </Button>
           </div>
 
@@ -201,7 +201,7 @@ export default function LoginPage() {
         <div className="text-center md:text-left">
           <h4 className="font-display text-sm font-bold text-[#dce5d9] mb-1 tracking-wide uppercase">SonglessUnlimited</h4>
           <p className="text-[#869585] text-xs">© 2024 SonglessUnlimited. High-Stakes Music Discovery.</p>
-          <p className="text-[#869585] text-[11px] mt-1 leading-relaxed">No Spotify account required to play YouTube mode.</p>
+          <p className="text-[#869585] text-[11px] mt-1 leading-relaxed">No Spotify account required for YouTube or public Spotify playlists.</p>
         </div>
 
         <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[#bccbb9]">

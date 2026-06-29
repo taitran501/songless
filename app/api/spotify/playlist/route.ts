@@ -1,5 +1,39 @@
 import { type NextRequest, NextResponse } from "next/server"
 import type { GameTrack } from "@/lib/tracks"
+import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
+
+async function getClientCredentialsToken() {
+  if (!SPOTIFY_CONFIG.CLIENT_ID || !SPOTIFY_CONFIG.CLIENT_SECRET) {
+    return null
+  }
+
+  const response = await fetch(SPOTIFY_ENDPOINTS.TOKEN, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${Buffer.from(`${SPOTIFY_CONFIG.CLIENT_ID}:${SPOTIFY_CONFIG.CLIENT_SECRET}`).toString("base64")}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+    }),
+  })
+
+  if (!response.ok) {
+    console.error("Spotify client credentials token request failed:", response.status)
+    return null
+  }
+
+  const data = await response.json()
+  return typeof data.access_token === "string" ? data.access_token : null
+}
+
+function getSpotifyErrorMessage(status: number, hasUserToken: boolean) {
+  if ((status === 401 || status === 403) && !hasUserToken) {
+    return "Connect Spotify to load private Spotify playlists."
+  }
+
+  return "Failed to fetch playlist"
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,16 +44,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Playlist ID is required" }, { status: 400 })
     }
 
-    // Get access token from request headers or you might need to implement a different way
-    // For now, we'll assume the client sends it
     const authHeader = request.headers.get("authorization")
-    let accessToken = ""
+    const userAccessToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : ""
+    const accessToken = userAccessToken || (await getClientCredentialsToken())
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      accessToken = authHeader.substring(7)
-    } else {
-      // In a real app, you'd handle this differently
-      return NextResponse.json({ error: "Access token required" }, { status: 401 })
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "Spotify playlist loading is not configured for guest mode." },
+        { status: 503 }
+      )
+    }
+
+    let playlistName = `Playlist #${playlistId}`
+    const metadataResponse = await fetch(
+      `${SPOTIFY_ENDPOINTS.API_BASE}/playlists/${playlistId}?fields=name`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    )
+
+    if (metadataResponse.ok) {
+      const metadata = await metadataResponse.json()
+      if (typeof metadata.name === "string" && metadata.name.trim()) {
+        playlistName = metadata.name
+      }
+    } else if (metadataResponse.status === 401 || metadataResponse.status === 403) {
+      return NextResponse.json(
+        { error: getSpotifyErrorMessage(metadataResponse.status, Boolean(userAccessToken)) },
+        { status: metadataResponse.status }
+      )
     }
 
     const allTracks: any[] = []
@@ -28,7 +83,7 @@ export async function GET(request: NextRequest) {
 
     while (true) {
       const response = await fetch(
-        `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`,
+        `${SPOTIFY_ENDPOINTS.API_BASE}/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`,
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -37,7 +92,10 @@ export async function GET(request: NextRequest) {
       )
 
       if (!response.ok) {
-        return NextResponse.json({ error: "Failed to fetch playlist" }, { status: response.status })
+        return NextResponse.json(
+          { error: getSpotifyErrorMessage(response.status, Boolean(userAccessToken)) },
+          { status: response.status }
+        )
       }
 
       const data = await response.json()
@@ -80,7 +138,11 @@ export async function GET(request: NextRequest) {
       })
       .filter((track: any) => track !== null) // Remove any null tracks from mapping errors
 
-    return NextResponse.json(filteredTracks)
+    return NextResponse.json(filteredTracks, {
+      headers: {
+        "x-playlist-name": encodeURIComponent(playlistName),
+      },
+    })
   } catch (error) {
     console.error("Error fetching playlist:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

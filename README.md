@@ -82,8 +82,8 @@ tests/               Unit and Playwright E2E tests
 
 - YouTube playlist and search support uses HTML scraping. It can break if YouTube changes page structure.
 - Spotify tokens are stored in `localStorage` in this version.
-- Guest mode supports YouTube playlists only.
+- Guest mode supports YouTube playlists and public Spotify playlists.
 
 ## Deployment
 
-The app is compatible with Vercel. Configure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in the deployment environment if Spotify mode is needed.
+The app is compatible with Vercel. Configure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in the deployment environment for Spotify login and guest public Spotify playlist loading.

@@ -97,18 +97,18 @@ export default function PlaylistPage() {
         }
       } else {
         const accessToken = localStorage.getItem("spotify_access_token")
+        const response = await fetch(
+          `/api/spotify/playlist?playlistId=${playlistId}`,
+          accessToken
+            ? {
+                headers: {
+                  "Authorization": `Bearer ${accessToken}`
+                }
+              }
+            : undefined
+        )
 
-        if (!accessToken) {
-          throw new Error("Connect Spotify to load Spotify playlists.")
-        }
-
-        const response = await fetch(`/api/spotify/playlist?playlistId=${playlistId}`, {
-          headers: {
-            "Authorization": `Bearer ${accessToken}`
-          }
-        })
-
-        if (response.status === 401) {
+        if (response.status === 401 && accessToken) {
           logout()
           setError("Your Spotify session expired. Please log in again.")
           router.push("/")
@@ -121,20 +121,9 @@ export default function PlaylistPage() {
         }
 
         data = await response.json()
-
-        // Fetch playlist metadata to get proper name
-        try {
-          const metaResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-            headers: {
-              "Authorization": `Bearer ${accessToken}`
-            }
-          })
-          if (metaResponse.ok) {
-            const metaData = await metaResponse.json()
-            playlistName = metaData.name
-          }
-        } catch (e) {
-          console.error("Error fetching playlist metadata:", e)
+        const nameHeader = response.headers.get("x-playlist-name")
+        if (nameHeader) {
+          playlistName = decodeURIComponent(nameHeader)
         }
       }
 
@@ -187,7 +176,7 @@ export default function PlaylistPage() {
           <p className="text-[#9ca3af] text-sm max-w-md mx-auto leading-relaxed">
             {hasSpotifyConnection
               ? "Load a Spotify or YouTube playlist, listen to the clip, and name the tune."
-              : "Guest mode is active. Load a YouTube playlist without signing in."}
+              : "Guest mode is active. Load a YouTube or public Spotify playlist without signing in."}
           </p>
         </header>
 
@@ -209,7 +198,7 @@ export default function PlaylistPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="playlist-input" className="text-gray-300 text-sm font-medium">
-                  {hasSpotifyConnection ? "Spotify or YouTube Playlist URL or ID" : "YouTube Playlist URL or ID"}
+                  {hasSpotifyConnection ? "Spotify or YouTube Playlist URL or ID" : "YouTube or public Spotify Playlist URL or ID"}
                 </Label>
                 <Input
                   id="playlist-input"
@@ -391,7 +380,7 @@ export default function PlaylistPage() {
                     </div>
                     <h3 className="text-white font-semibold text-sm">Spotify Playback</h3>
                     <p className="text-gray-400 text-xs leading-relaxed">
-                      Spotify playlists need a connected Spotify account. Tracks without previews use YouTube fallback.
+                      Public Spotify playlists also work in guest mode. Login is still needed for private playlists and Spotify playback.
                     </p>
                   </div>
 
@@ -423,9 +412,9 @@ export default function PlaylistPage() {
                   <Music className="w-4 h-4" />
                   <span className="font-semibold text-[10px] uppercase tracking-wider">Guest Mode</span>
                 </div>
-                <h3 className="text-white font-semibold text-sm">YouTube playlists only</h3>
+                <h3 className="text-white font-semibold text-sm">YouTube and public Spotify playlists</h3>
                 <p className="text-gray-400 text-xs leading-relaxed">
-                  Paste a YouTube playlist URL. Connect Spotify from the home page if you want to use Spotify playlists.
+                  Paste a YouTube playlist or public Spotify playlist URL. Private Spotify playlists still need a Spotify login.
                 </p>
               </div>
             )}
