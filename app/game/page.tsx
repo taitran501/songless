@@ -328,7 +328,7 @@ export default function GamePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#030712] text-gray-100 flex items-center justify-center relative overflow-hidden font-sans">
+      <div key="game-loading" className="min-h-screen bg-[#030712] text-gray-100 flex items-center justify-center relative overflow-hidden font-sans">
         <Loader2 className="w-10 h-10 text-green-400 animate-spin mx-auto mb-4" />
       </div>
     )
@@ -336,7 +336,7 @@ export default function GamePage() {
 
   if (tracks.length === 0) {
     return (
-      <div className="min-h-screen bg-[#030712] text-gray-100 flex items-center justify-center p-4">
+      <div key="game-empty" className="min-h-screen bg-[#030712] text-gray-100 flex items-center justify-center p-4">
         <div className="text-center max-w-md bg-gray-900/40 p-8 rounded-2xl">
           <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-2">No Tracks Loaded</h2>
@@ -353,6 +353,7 @@ export default function GamePage() {
 
     return (
       <div
+        key="game-complete"
         className="min-h-screen bg-[#020617] text-[#dce5d9] flex items-center justify-center p-4 sm:p-6 font-sans"
         style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
       >
@@ -431,6 +432,7 @@ export default function GamePage() {
 
   return (
     <div
+      key="game-active"
       className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col relative overflow-hidden font-sans p-4 sm:p-6 md:p-8 select-none"
       style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
     >
