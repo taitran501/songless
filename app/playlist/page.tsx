@@ -17,6 +17,9 @@ import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
   const [loading, setLoading] = useState(false)
+  const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null)
+  const [loadingPlaylistName, setLoadingPlaylistName] = useState<string | null>(null)
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [shuffleEnabled, setShuffleEnabled] = useState(false)
   const [trackCount, setTrackCount] = useState<string>("20")
@@ -31,7 +34,7 @@ export default function PlaylistPage() {
   const { accessToken, logout } = useSpotifyAuth()
   const hasSpotifyConnection = Boolean(accessToken)
 
-  // Load recent playlists on mount
+  // Load recent playlists on mount and restore active playlist
   useEffect(() => {
     const saved = localStorage.getItem("recent_playlists")
     if (saved) {
@@ -41,6 +44,9 @@ export default function PlaylistPage() {
         console.error("Error parsing recent playlists:", e)
       }
     }
+    // Restore the currently active playlist ID
+    const currentId = localStorage.getItem("current_playlist_id")
+    if (currentId) setActivePlaylistId(currentId)
   }, [])
 
   useEffect(() => {
@@ -81,7 +87,12 @@ export default function PlaylistPage() {
 
   const loadPlaylistById = async (playlistId: string) => {
     setLoading(true)
+    setLoadingPlaylistId(playlistId)
     setError(null)
+
+    // Try to use an existing name from recent playlists as a hint while loading
+    const knownName = recentPlaylists.find((p) => p.id === playlistId)?.name ?? null
+    setLoadingPlaylistName(knownName)
     
     try {
       const isYT = isYouTubePlaylistInput(playlistId)
@@ -156,12 +167,15 @@ export default function PlaylistPage() {
       recent = recent.slice(0, 6) // Keep last 6
       localStorage.setItem("recent_playlists", JSON.stringify(recent))
       setRecentPlaylists(recent)
+      setActivePlaylistId(playlistId)
       
     } catch (error) {
       console.error("Error fetching playlist:", error)
       setError(error instanceof Error ? error.message : "Error fetching playlist")
     } finally {
       setLoading(false)
+      setLoadingPlaylistId(null)
+      setLoadingPlaylistName(null)
     }
   }
 
@@ -255,7 +269,9 @@ export default function PlaylistPage() {
                   {loading ? (
                     <span className="flex items-center justify-center space-x-2">
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Fetching tracks...</span>
+                      <span className="truncate max-w-[240px]">
+                        {loadingPlaylistName ? `Loading "${loadingPlaylistName}"...` : "Fetching tracks..."}
+                      </span>
                     </span>
                   ) : (
                     "LOAD PLAYLIST"
@@ -312,12 +328,22 @@ export default function PlaylistPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {recentPlaylists.map((p) => {
                   const inferredSource = p.source || (isYouTubePlaylistInput(p.id) ? "youtube" : "spotify")
+                  const isActive = activePlaylistId === p.id
+                  const isThisLoading = loadingPlaylistId === p.id
                   return (
                     <div
                       key={p.id}
-                      className="flex items-center justify-between bg-[#030712]/60 hover:bg-[#030712]/90 text-white border border-white/5 hover:border-[#10b981]/30 transition-all duration-300 rounded-xl p-4 w-full group relative overflow-hidden"
+                      className={`flex items-center justify-between text-white transition-all duration-300 rounded-xl p-4 w-full group relative overflow-hidden border ${
+                        isActive
+                          ? "bg-[#10b981]/8 border-[#10b981]/40 ring-1 ring-[#10b981]/20"
+                          : "bg-[#030712]/60 hover:bg-[#030712]/90 border-white/5 hover:border-[#10b981]/30"
+                      }`}
                     >
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/0 via-[#10b981]/5 to-[#10b981]/0 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                      <div className={`pointer-events-none absolute inset-0 transition-opacity ${
+                        isActive
+                          ? "bg-gradient-to-r from-[#10b981]/5 via-[#10b981]/8 to-[#10b981]/5 opacity-100"
+                          : "bg-gradient-to-r from-[#10b981]/0 via-[#10b981]/5 to-[#10b981]/0 opacity-0 group-hover:opacity-100"
+                      }`}></div>
                       
                       {/* Left: Clickable Playlist Info */}
                       <button
@@ -329,19 +355,37 @@ export default function PlaylistPage() {
                         className="flex items-center space-x-3 flex-1 text-left min-w-0 disabled:opacity-50"
                         disabled={loading}
                       >
-                        <div className={`p-2 rounded-lg shrink-0 ${
-                          inferredSource === "youtube"
-                            ? "bg-red-500/10 text-red-400 group-hover:bg-red-500/20"
-                            : "bg-[#10b981]/10 text-[#10b981] group-hover:bg-[#10b981]/20"
-                        } transition-colors`}>
-                          {inferredSource === "youtube" ? (
+                        <div className={`p-2 rounded-lg shrink-0 transition-colors ${
+                          isThisLoading
+                            ? "bg-white/10 text-white animate-pulse"
+                            : inferredSource === "youtube"
+                              ? "bg-red-500/10 text-red-400 group-hover:bg-red-500/20"
+                              : "bg-[#10b981]/10 text-[#10b981] group-hover:bg-[#10b981]/20"
+                        }`}>
+                          {isThisLoading ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : inferredSource === "youtube" ? (
                             <Youtube className="w-5 h-5" />
                           ) : (
                             <Music className="w-5 h-5" />
                           )}
                         </div>
                         <div className="truncate flex-1 min-w-0">
-                          <p className="font-bold truncate text-sm text-gray-200 group-hover:text-[#10b981] transition-colors">{p.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className={`font-bold truncate text-sm transition-colors ${
+                              isActive ? "text-[#10b981]" : "text-gray-200 group-hover:text-[#10b981]"
+                            }`}>{p.name}</p>
+                            {isActive && !isThisLoading && (
+                              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-[#10b981]/20 text-[#10b981] font-bold uppercase tracking-wider border border-[#10b981]/30">
+                                Selected
+                              </span>
+                            )}
+                            {isThisLoading && (
+                              <span className="shrink-0 text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-300 font-bold uppercase tracking-wider animate-pulse">
+                                Loading...
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center space-x-2 mt-1 flex-wrap gap-y-1">
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400 font-medium">
                               {p.trackCount !== undefined ? `${p.trackCount} ${p.trackCount === 1 ? "song" : "songs"}` : "Unknown count"}
