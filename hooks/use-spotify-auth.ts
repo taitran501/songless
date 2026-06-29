@@ -43,7 +43,6 @@ export function useSpotifyAuth() {
     const isExpired = !authState.accessToken || now > authState.expiresAt - 60000 // 1 min buffer
     
     if (isExpired && authState.refreshToken) {
-      console.log("Token expired or expiring soon, refreshing...")
       const refreshedToken = await refreshTokens()
       return refreshedToken
     }
@@ -144,4 +143,4 @@ export function useSpotifyAuth() {
     logout,
     setTokens
   }
-} 
+}

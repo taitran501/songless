@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
+import type { GameTrack } from "@/lib/tracks"
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,7 +47,6 @@ export async function GET(request: NextRequest) {
         break // No more tracks
       }
 
-      console.log(`Fetched ${tracks.length} tracks, offset: ${offset}`)
       allTracks.push(...tracks)
       offset += limit
 
@@ -65,12 +65,14 @@ export async function GET(request: NextRequest) {
       .map((item: any) => {
         try {
           return {
+            source: "spotify",
             uri: item.track.uri,
             name: item.track.name,
+            artists: item.track.artists?.map((a: any) => a.name).join(", ") || "Unknown Artist",
             duration_ms: item.track.duration_ms || 0,
             albumImage: item.track.album?.images?.[0]?.url ?? null,
             preview_url: item.track.preview_url || null,
-          }
+          } satisfies GameTrack
         } catch (error) {
           console.error("Error mapping track:", error, item)
           return null
@@ -78,7 +80,6 @@ export async function GET(request: NextRequest) {
       })
       .filter((track: any) => track !== null) // Remove any null tracks from mapping errors
 
-    console.log(`Returning ${filteredTracks.length} valid tracks`)
     return NextResponse.json(filteredTracks)
   } catch (error) {
     console.error("Error fetching playlist:", error)

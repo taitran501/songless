@@ -1,30 +1,31 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
-import { Share2 } from "lucide-react"
+import { Share2, SkipForward, Music } from "lucide-react"
+import type { GameTrack } from "@/lib/tracks"
 
 interface GameModalProps {
   isOpen: boolean
   onClose: () => void
   correct: boolean
-  answer: string
+  track: GameTrack | null
   onNext: () => void
   onBack?: () => void
   guesses: string[]
   trackIndex: number
 }
 
-export function GameModal({ 
-  isOpen, 
-  onClose, 
-  correct, 
-  answer, 
-  onNext, 
-  onBack, 
-  guesses = [], 
-  trackIndex 
+export function GameModal({
+  isOpen,
+  onClose,
+  correct,
+  track,
+  onNext,
+  onBack,
+  guesses = [],
+  trackIndex
 }: GameModalProps) {
   const { toast } = useToast()
 
@@ -44,7 +45,7 @@ export function GameModal({
       grid.push("⬛")
     }
     
-    return grid.join(" ")
+    return grid.join("")
   }
 
   const handleShare = () => {
@@ -68,59 +69,86 @@ export function GameModal({
     }
   }
 
+  const stageDurations = [0.5, 1, 2, 4, 8, 15]
+  const clipListened = correct ? `${stageDurations[guesses.length - 1]}s` : "15s"
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0b1527]/95 backdrop-blur-xl border border-white/10 text-white max-w-md rounded-2xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] p-6">
-        <DialogHeader>
-          <DialogTitle className={`text-center text-2xl font-extrabold tracking-tight ${correct ? "text-green-400 drop-shadow-[0_0_20px_rgba(34,197,94,0.2)]" : "text-red-400 drop-shadow-[0_0_20px_rgba(239,68,68,0.2)]"}`}>
-            {correct ? "🎉 Correct!" : "❌ Game Over"}
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className={`max-w-md backdrop-blur-3xl rounded-2xl p-8 border-[1.5px] text-white flex flex-col items-center select-none outline-none ${
+        correct
+          ? "bg-[#090d16]/90 border-[#10b981] shadow-[0_0_25px_rgba(16,185,129,0.3),inset_0_0_15px_rgba(16,185,129,0.1)]"
+          : "bg-[#090d16]/90 border-[#ef4444] shadow-[0_0_25px_rgba(239,68,68,0.3),inset_0_0_15px_rgba(239,68,68,0.1)]"
+      }`}>
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className={`font-sans text-3xl font-extrabold tracking-tight ${
+            correct ? "text-[#10b981] drop-shadow-[0_0_20px_rgba(16,185,129,0.7)]" : "text-[#ef4444] drop-shadow-[0_0_20px_rgba(239,68,68,0.7)]"
+          }`}>
+            {correct ? "SOLVED! 🎉" : "GAME OVER ❌"}
+          </h1>
+        </div>
 
-        <div className="text-center space-y-5 pt-2">
-          <p className="text-gray-400 text-sm">
-            {correct ? "Great job! You guessed it right!" : "Nice try! The correct answer was:"}
-          </p>
-
-          <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-            <h3 className="text-xl font-bold tracking-tight text-white leading-snug">{answer}</h3>
-          </div>
-
-          {/* Emoji Grid Display */}
-          <div className="bg-gray-950/60 p-4 rounded-xl border border-white/5 inline-block mx-auto">
-            <p className="text-xl tracking-widest font-mono select-all mb-1.5 animate-fade-in">
-              {generateEmojiGrid()}
-            </p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Track #{trackIndex + 1}</p>
-          </div>
-
-          <div className="flex flex-col gap-3 pt-2">
-            <Button 
-              onClick={handleShare}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-all"
-            >
-              <Share2 className="w-4 h-4" />
-              SHARE RESULTS
-            </Button>
-            
-            <div className="flex gap-3 justify-center w-full">
-              {onBack && (
-                <Button 
-                  variant="outline" 
-                  className="flex-1 bg-transparent border border-white/10 text-gray-300 hover:bg-white/5 hover:text-white h-12 rounded-xl font-bold transition-all active:scale-[0.98]"
-                  onClick={onBack}
-                >
-                  ← BACK
-                </Button>
-              )}
-              <Button 
-                onClick={onNext} 
-                className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold h-12 rounded-xl transition-all shadow-lg shadow-green-500/20 active:scale-[0.98]"
-              >
-                NEXT SONG
-              </Button>
+        {/* Album Cover */}
+        <div className="w-48 h-48 md:w-56 md:h-56 rounded-lg overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] mb-6 ring-1 ring-white/20 flex items-center justify-center bg-gray-900">
+          {track?.albumImage ? (
+            <img alt="Album Art" className="w-full h-full object-cover animate-fade-in" src={track.albumImage} />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center">
+              <Music className="w-16 h-16 text-indigo-400" />
             </div>
+          )}
+        </div>
+
+        {/* Song Metadata */}
+        <div className="text-center mb-8 w-full px-4">
+          <h2 className="font-sans text-xl text-white mb-1 font-bold truncate">{track?.name || "Unknown Track"}</h2>
+          <p className="font-sans text-sm text-[#9ca3af] truncate">{track?.artists || "Unknown Artist"}</p>
+        </div>
+
+        {/* Stat Summary Grid */}
+        <div className="w-full grid grid-cols-2 gap-4 mb-8">
+          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-4 text-center">
+            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Guesses Used</p>
+            <p className={`text-xl font-bold ${correct ? "text-[#10b981]" : "text-[#ef4444]"}`}>
+              {correct ? `${guesses.length} / 6` : "6 / 6"}
+            </p>
           </div>
+          <div className="bg-white/[0.03] rounded-lg border border-white/10 p-4 text-center">
+            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Clip Listened</p>
+            <p className="text-xl text-white font-bold">{clipListened}</p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="w-full flex flex-col gap-4">
+          {/* Primary Action */}
+          <Button
+            onClick={onNext}
+            className={`w-full bg-[#10b981] hover:bg-[#10b981]/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] hover:scale-[1.02] active:scale-[0.98] text-black font-bold py-6 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2`}
+          >
+            NEXT SONG
+            <SkipForward className="w-5 h-5 fill-black text-black" />
+          </Button>
+
+          {/* Secondary Action */}
+          <Button
+            onClick={handleShare}
+            className="w-full bg-white/[0.03] border border-white/20 text-white backdrop-blur-md font-semibold py-6 rounded-lg hover:bg-white/10 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            <Share2 className="w-4 h-4" />
+            SHARE RESULTS
+            <span className="ml-2 font-mono text-sm tracking-tighter text-gray-400">{generateEmojiGrid()}</span>
+          </Button>
+
+          {/* Tertiary Action */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="w-full text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center"
+            >
+              Back to Playlists
+            </button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

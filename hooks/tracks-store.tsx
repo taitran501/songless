@@ -1,18 +1,12 @@
 "use client"
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react"
-
-interface Track {
-  uri: string
-  name: string
-  duration_ms: number
-  albumImage?: string | null
-  preview_url?: string | null
-}
+import type { GameTrack } from "@/lib/tracks"
+import { normalizeTracks } from "@/lib/tracks"
 
 interface TracksContextType {
-  tracks: Track[]
-  setTracks: (tracks: Track[]) => void
+  tracks: GameTrack[]
+  setTracks: (tracks: GameTrack[]) => void
   clearTracks: () => void
   isLoading: boolean
 }
@@ -20,7 +14,7 @@ interface TracksContextType {
 const TracksContext = createContext<TracksContextType | undefined>(undefined)
 
 export function TracksProvider({ children }: { children: ReactNode }) {
-  const [tracks, setTracksState] = useState<Track[]>([])
+  const [tracks, setTracksState] = useState<GameTrack[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Load tracks from localStorage on mount
@@ -29,28 +23,23 @@ export function TracksProvider({ children }: { children: ReactNode }) {
       const savedTracks = localStorage.getItem("game_tracks")
       if (savedTracks) {
         const parsedTracks = JSON.parse(savedTracks)
-        // Filter out legacy tracks that do not have a preview_url
-        const validTracks = parsedTracks.filter((t: Track) => !!t.preview_url)
+        const validTracks = normalizeTracks(parsedTracks)
         setTracksState(validTracks)
-        console.log("📦 [TracksProvider] Loaded tracks from localStorage:", validTracks.length)
-      } else {
-        console.log("📦 [TracksProvider] No saved tracks found in localStorage")
       }
     } catch (error) {
-      console.error("📦 [TracksProvider] Error loading tracks from localStorage:", error)
+      console.error("Could not load saved tracks:", error)
     } finally {
       setIsLoading(false)
     }
   }, [])
 
-  const setTracks = (newTracks: Track[]) => {
-    console.log("📦 [TracksProvider] Setting tracks:", newTracks.length)
-    setTracksState(newTracks)
-    localStorage.setItem("game_tracks", JSON.stringify(newTracks))
+  const setTracks = (newTracks: GameTrack[]) => {
+    const normalized = normalizeTracks(newTracks)
+    setTracksState(normalized)
+    localStorage.setItem("game_tracks", JSON.stringify(normalized))
   }
 
   const clearTracks = () => {
-    console.log("📦 [TracksProvider] Clearing tracks")
     setTracksState([])
     localStorage.removeItem("game_tracks")
   }
@@ -68,4 +57,4 @@ export function useTracks() {
     throw new Error("useTracks must be used within a TracksProvider")
   }
   return context
-} 
+}

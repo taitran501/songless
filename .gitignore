@@ -38,9 +38,16 @@ next-env.d.ts
 # local dev/test scratch files
 test-*.html
 debug-*.md
-/scripts/
 /pnpm-lock.yaml
 /styles/
+
+# generated design imports
+/stitch_extracted/
+/stitch_extracted_full/
+/stitch_songlessunlimited_landing_page*.zip
+
+# scratch scripts
+/scripts/experiments/
 
 # Duplicate hooks
 /components/ui/use-mobile.tsx
@@ -52,4 +59,4 @@ debug-*.md
 # Local dev documentation
 /DEPLOY_GUIDE.md
 /SPOTIFY_OAUTH_UPDATE.md
-/test-flow.md
+/test-flow.md

@@ -4,12 +4,6 @@ import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
 export async function POST(request: NextRequest) {
   try {
     const { code, redirect_uri } = await request.json()
-    
-    console.log("Callback received code:", code)
-    console.log("Client ID:", SPOTIFY_CONFIG.CLIENT_ID)
-    console.log("Passed Redirect URI:", redirect_uri)
-    console.log("Fallback Redirect URI:", SPOTIFY_CONFIG.REDIRECT_URI)
-
     const response = await fetch(SPOTIFY_ENDPOINTS.TOKEN, {
       method: "POST",
       headers: {
@@ -24,7 +18,6 @@ export async function POST(request: NextRequest) {
     })
 
     const data = await response.json()
-    console.log("Spotify response:", data)
 
     if (data.error) {
       console.error("Spotify error:", data.error)

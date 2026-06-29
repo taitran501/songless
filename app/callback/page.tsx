@@ -28,7 +28,6 @@ function CallbackContent() {
 
     if (code) {
       hasProcessed.current = true
-      console.log("Processing Spotify callback...")
       
       // Exchange code for tokens
       fetch("/api/spotify/callback", {
@@ -50,7 +49,6 @@ function CallbackContent() {
         })
         .then((data) => {
           if (data.access_token) {
-            console.log("Token received, redirecting to playlist...")
             setTokens(data.access_token, data.refresh_token, data.expires_in)
             router.replace("/playlist") // Use replace instead of push
           } else {
