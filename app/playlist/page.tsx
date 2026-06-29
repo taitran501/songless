@@ -12,7 +12,7 @@ import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
-import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2 } from "lucide-react"
+import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube } from "lucide-react"
 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
@@ -229,11 +229,11 @@ export default function PlaylistPage() {
                 </div>
               )}
               
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-3">
                 <Button
                   type="submit"
                   disabled={loading || !playlistInput.trim()}
-                  className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
+                  className="w-full bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center space-x-2">
@@ -244,20 +244,33 @@ export default function PlaylistPage() {
                     "LOAD PLAYLIST"
                   )}
                 </Button>
-                
+
                 {hasSpotifyConnection ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      localStorage.removeItem("spotify_access_token")
-                      localStorage.removeItem("spotify_refresh_token")
-                      router.push("/")
-                    }}
-                    className="bg-transparent border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
-                  >
-                    Switch Spotify Account
-                  </Button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        logout()
+                        setError(null)
+                      }}
+                      className="bg-transparent border border-red-500/20 hover:bg-red-500/10 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
+                    >
+                      <Youtube className="w-4 h-4 mr-2 text-red-400" />
+                      Use Guest Mode
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        logout()
+                        router.push("/")
+                      }}
+                      className="bg-transparent border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
+                    >
+                      Switch Spotify Account
+                    </Button>
+                  </div>
                 ) : (
                   <Button
                     type="button"

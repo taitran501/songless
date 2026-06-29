@@ -308,6 +308,24 @@ test("loads playlist tracks and enables the start-game state", async ({ page }) 
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
 })
 
+test("lets a connected user fall back to guest mode", async ({ page }) => {
+  await seedStorage(page, {
+    spotify_access_token: "playlist-token",
+    spotify_refresh_token: "playlist-refresh",
+    spotify_expires_at: "9999999999999",
+  })
+
+  await mockSpotifyDevices(page)
+  await page.goto("/playlist")
+
+  await expect(page.getByRole("button", { name: "Use Guest Mode" })).toBeVisible()
+  await page.getByRole("button", { name: "Use Guest Mode" }).click()
+
+  await expect(page.getByText("Guest mode is active")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Connect Spotify" })).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBeNull()
+})
+
 test("loads YouTube playlist tracks and enables the start-game state", async ({ page }) => {
   await seedStorage(page, {
     spotify_access_token: "playlist-token",
