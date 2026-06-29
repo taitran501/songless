@@ -540,9 +540,9 @@ test("accepts a selected YouTube search suggestion in guest mode", async ({ page
       contentType: "application/json",
       body: JSON.stringify([
         {
-          uri: "youtube:6uVJqD2hSGQ",
-          videoId: "6uVJqD2hSGQ",
-          name: "Em",
+          uri: "youtube:different",
+          videoId: "different",
+          name: "Em (Official Music Video)",
           artists: "Binz",
           albumImage: null,
         },

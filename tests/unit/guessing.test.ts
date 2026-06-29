@@ -33,4 +33,46 @@ describe("guessing", () => {
   it("accepts selected suggestion URI match", () => {
     assert.equal(isCorrectGuess({ guess: "wrong text", target, selectedUri: target.uri }), true)
   })
+
+  it("accepts selected suggestion with same normalized title and different URI", () => {
+    assert.equal(
+      isCorrectGuess({
+        guess: "Artist - The Song (Official Music Video)",
+        target,
+        selectedUri: "youtube:different",
+        selectedSuggestion: {
+          uri: "youtube:different",
+          name: "The Song (Official Music Video)",
+          artists: "Artist",
+        },
+      }),
+      true
+    )
+  })
+
+  it("accepts selected suggestion for short matching titles", () => {
+    const shortTarget: GameTrack = {
+      source: "youtube",
+      uri: "youtube:target",
+      name: "Em",
+      artists: "Binz",
+      duration_ms: 180000,
+      albumImage: null,
+      preview_url: null,
+    }
+
+    assert.equal(
+      isCorrectGuess({
+        guess: "Some channel - Em",
+        target: shortTarget,
+        selectedUri: "youtube:other-video",
+        selectedSuggestion: {
+          uri: "youtube:other-video",
+          name: "Em",
+          artists: "Some channel",
+        },
+      }),
+      true
+    )
+  })
 })

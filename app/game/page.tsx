@@ -29,6 +29,7 @@ export default function GamePage() {
   const [isSearching, setIsSearching] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   const {
@@ -137,6 +138,7 @@ export default function GamePage() {
   const resetInput = () => {
     setGuess("")
     setSelectedUri(null)
+    setSelectedSuggestion(null)
     setShowSuggestions(false)
   }
 
@@ -152,7 +154,7 @@ export default function GamePage() {
     const newGuesses = [...guesses, guess]
     setGuesses(newGuesses)
 
-    if (isCorrectGuess({ guess, target: currentTrack, selectedUri })) {
+    if (isCorrectGuess({ guess, target: currentTrack, selectedUri, selectedSuggestion })) {
       setModalContent({ correct: true, answer: currentTrack.name })
       setShowModal(true)
     } else if (currentStage < 5) {
@@ -311,11 +313,13 @@ export default function GamePage() {
           onGuessChange={(value) => {
             setGuess(value)
             setSelectedUri(null)
+            setSelectedSuggestion(null)
           }}
           onFocus={() => setShowSuggestions(true)}
           onSelectSuggestion={(suggestion) => {
             setGuess(`${suggestion.artists} - ${suggestion.name}`)
             setSelectedUri(suggestion.uri)
+            setSelectedSuggestion(suggestion)
             setShowSuggestions(false)
           }}
           onSubmitGuess={() => void handleGuess()}
