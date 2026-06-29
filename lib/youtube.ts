@@ -21,6 +21,14 @@ export interface ParsedYouTubePlaylist {
   tracks: GameTrack[]
 }
 
+export interface YouTubeSearchSuggestion {
+  videoId: string
+  uri: string
+  name: string
+  artists: string
+  albumImage: string | null
+}
+
 export function extractYouTubePlaylistId(input: string): string | null {
   if (!input) return null
   const trimmed = input.trim()
@@ -92,6 +100,15 @@ function readInitialData(html: string): any {
   } catch {
     throw new YouTubeError("Could not parse this YouTube playlist.", 422)
   }
+}
+
+function readText(runs: any): string {
+  if (!Array.isArray(runs)) return ""
+  return runs
+    .map((run) => run?.text)
+    .filter((text): text is string => typeof text === "string")
+    .join("")
+    .trim()
 }
 
 function findAlertText(data: any): string | null {
@@ -179,6 +196,61 @@ function collectPlaylistItems(data: any): any[] {
     .flat()
 }
 
+function collectVideoRenderers(node: any, results: any[] = []): any[] {
+  if (!node || results.length >= 20) return results
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectVideoRenderers(item, results)
+      if (results.length >= 20) break
+    }
+    return results
+  }
+
+  if (typeof node !== "object") return results
+
+  if (node.videoRenderer?.videoId) {
+    results.push(node.videoRenderer)
+    return results
+  }
+
+  for (const value of Object.values(node)) {
+    collectVideoRenderers(value, results)
+    if (results.length >= 20) break
+  }
+
+  return results
+}
+
+export function parseYouTubeSearchHtml(html: string, limit = 6): YouTubeSearchSuggestion[] {
+  const data = readInitialData(html)
+  const seen = new Set<string>()
+
+  return collectVideoRenderers(data)
+    .map((renderer): YouTubeSearchSuggestion | null => {
+      const videoId = renderer.videoId
+      const title = readText(renderer.title?.runs) || renderer.title?.simpleText || ""
+      const artist =
+        readText(renderer.ownerText?.runs) ||
+        readText(renderer.shortBylineText?.runs) ||
+        "YouTube"
+      const thumbnails = renderer.thumbnail?.thumbnails
+
+      if (!videoId || !title || seen.has(videoId)) return null
+      seen.add(videoId)
+
+      return {
+        videoId,
+        uri: `youtube:${videoId}`,
+        name: title,
+        artists: artist,
+        albumImage: Array.isArray(thumbnails) && thumbnails.length > 0 ? thumbnails[thumbnails.length - 1].url : null,
+      }
+    })
+    .filter((suggestion): suggestion is YouTubeSearchSuggestion => suggestion !== null)
+    .slice(0, limit)
+}
+
 export function parseYouTubePlaylistHtml(html: string): ParsedYouTubePlaylist {
   const data = readInitialData(html)
   const alertText = findAlertText(data)
@@ -234,4 +306,16 @@ export async function searchYouTubeVideo(query: string): Promise<{ videoId: stri
   }
 
   return { videoId: match[1] }
+}
+
+export async function searchYouTubeSuggestions(query: string): Promise<YouTubeSearchSuggestion[]> {
+  const trimmed = query.trim()
+  if (!trimmed) {
+    throw new YouTubeError("Search query is required.", 400)
+  }
+
+  const html = await fetchTextWithTimeout(
+    `https://www.youtube.com/results?search_query=${encodeURIComponent(trimmed)}`
+  )
+  return parseYouTubeSearchHtml(html)
 }

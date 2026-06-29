@@ -14,7 +14,7 @@ import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { useToast } from "@/hooks/use-toast"
 import { isCorrectGuess } from "@/lib/guessing"
-import { isSpotifyTrack } from "@/lib/tracks"
+import { isSpotifyTrack, isYoutubeTrack } from "@/lib/tracks"
 
 export default function GamePage() {
   const router = useRouter()
@@ -71,35 +71,41 @@ export default function GamePage() {
         return
       }
 
-      if (!accessToken) {
-        setSuggestions([])
-        return
-      }
-
       setIsSearching(true)
       try {
-        const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        })
+        const useSpotifySearch = Boolean(accessToken && currentTrack && !isYoutubeTrack(currentTrack))
+        const response = useSpotifySearch
+          ? await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            })
+          : await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
+
         if (response.ok) {
           const data = await response.json()
-          const items = data.tracks?.items || []
-          setSuggestions(
-            items.map((item: any) => ({
-              uri: item.uri,
-              name: item.name,
-              artists: item.artists.map((artist: any) => artist.name).join(", "),
-              albumImage: item.album?.images?.[2]?.url || item.album?.images?.[0]?.url || null,
-            }))
-          )
+          if (useSpotifySearch) {
+            const items = data.tracks?.items || []
+            setSuggestions(
+              items.map((item: any) => ({
+                uri: item.uri,
+                name: item.name,
+                artists: item.artists.map((artist: any) => artist.name).join(", "),
+                albumImage: item.album?.images?.[2]?.url || item.album?.images?.[0]?.url || null,
+              }))
+            )
+          } else {
+            setSuggestions(data)
+          }
+        } else {
+          setSuggestions([])
         }
       } catch (error) {
         console.warn("Search failed:", error)
+        setSuggestions([])
       } finally {
         setIsSearching(false)
       }
     },
-    [accessToken]
+    [accessToken, currentTrack]
   )
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { parseYouTubePlaylistHtml } from "@/lib/youtube"
+import { parseYouTubePlaylistHtml, parseYouTubeSearchHtml } from "@/lib/youtube"
 
 const html = `
 <html><script>
@@ -71,5 +71,38 @@ describe("YouTube parser", () => {
     assert.equal(result.tracks[0].source, "youtube")
     assert.equal(result.tracks[0].videoId, "6uVJqD2hSGQ")
     assert.equal(result.tracks[0].duration_ms, 296000)
+  })
+
+  it("parses YouTube search suggestions", () => {
+    const html = `<html><script>var ytInitialData = ${JSON.stringify({
+      contents: {
+        sectionListRenderer: {
+          contents: [
+            {
+              itemSectionRenderer: {
+                contents: [
+                  {
+                    videoRenderer: {
+                      videoId: "6uVJqD2hSGQ",
+                      title: { runs: [{ text: "Em" }] },
+                      ownerText: { runs: [{ text: "Binz" }] },
+                      thumbnail: {
+                        thumbnails: [{ url: "https://i.ytimg.com/vi/6uVJqD2hSGQ/hqdefault.jpg" }],
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    })};</script></html>`
+
+    const [suggestion] = parseYouTubeSearchHtml(html)
+
+    assert.equal(suggestion.uri, "youtube:6uVJqD2hSGQ")
+    assert.equal(suggestion.name, "Em")
+    assert.equal(suggestion.artists, "Binz")
   })
 })

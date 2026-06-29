@@ -127,6 +127,12 @@ export function GuessPanel({
               ))}
             </div>
           )}
+
+          {showSuggestions && !isSearching && guess.trim().length > 1 && suggestions.length === 0 && (
+            <div className="absolute z-50 left-0 right-0 mt-2 bg-[#090d16] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
+              <p className="text-sm text-[#6b7280]">No matching songs found.</p>
+            </div>
+          )}
         </div>
         <div className="flex gap-3">
           <Button onClick={onSkip} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">

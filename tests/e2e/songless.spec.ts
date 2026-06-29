@@ -486,12 +486,60 @@ test("does not reveal local playlist suggestions in guest YouTube mode", async (
     game_tracks: JSON.stringify(mockYoutubeTracks),
     current_playlist_id: "youtube-test",
   })
+  await page.route("**/api/youtube/suggestions?q=*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          uri: "youtube:notCurrent",
+          videoId: "notCurrent",
+          name: "Other Song",
+          artists: "Other Artist",
+          albumImage: null,
+        },
+      ]),
+    })
+  })
 
   await page.goto("/game")
   await expect(page.getByText("Track 1 of 1")).toBeVisible()
 
   await page.getByPlaceholder("Know the song? Search artist or title...").fill("Binz")
+  await expect(page.getByText("Other Song")).toBeVisible()
   await expect(page.locator("button", { hasText: "Em" })).toHaveCount(0)
+})
+
+test("accepts a selected YouTube search suggestion in guest mode", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockYoutubeTracks),
+    current_playlist_id: "youtube-test",
+  })
+  await page.route("**/api/youtube/suggestions?q=*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          uri: "youtube:6uVJqD2hSGQ",
+          videoId: "6uVJqD2hSGQ",
+          name: "Em",
+          artists: "Binz",
+          albumImage: null,
+        },
+      ]),
+    })
+  })
+
+  await page.goto("/game")
+  await expect(page.getByText("Track 1 of 1")).toBeVisible()
+
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("Binz")
+  await page.getByRole("button", { name: /Em/ }).click()
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+
+  await expect(page.getByText(/solved/i)).toBeVisible()
 })
 
 test("shows error when YouTube playlist fails to load", async ({ page }) => {
