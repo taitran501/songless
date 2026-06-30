@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Share2, SkipForward, Music } from "lucide-react"
-import type { GameTrack } from "@/lib/tracks"
+import type { GameMode, GameTrack } from "@/lib/tracks"
 
 interface GameModalProps {
   isOpen: boolean
@@ -17,6 +17,9 @@ interface GameModalProps {
   trackIndex: number
   pointsEarned?: number
   nextLabel?: string
+  mode?: GameMode
+  dailyDate?: string | null
+  score?: number
 }
 
 export function GameModal({
@@ -30,6 +33,9 @@ export function GameModal({
   trackIndex,
   pointsEarned = 0,
   nextLabel = "NEXT SONG",
+  mode = "audio",
+  dailyDate = null,
+  score = 0,
 }: GameModalProps) {
   const { toast } = useToast()
 
@@ -55,7 +61,13 @@ export function GameModal({
   const handleShare = () => {
     try {
       const emojis = generateEmojiGrid()
-      const shareText = `SonglessUnlimited #${trackIndex + 1}\n🔊 ${emojis}\nhttps://songless.vercel.app`
+      const label = dailyDate
+        ? `SonglessUnlimited Daily ${dailyDate}`
+        : mode === "lyrics"
+          ? "SonglessUnlimited Lyrics"
+          : "SonglessUnlimited"
+      const icon = mode === "lyrics" ? "📝" : "🔊"
+      const shareText = `${label} #${trackIndex + 1}\nScore: ${score}\n${icon} ${emojis}\nhttps://songless.vercel.app`
       
       void navigator.clipboard.writeText(shareText)
       
@@ -75,6 +87,7 @@ export function GameModal({
 
   const stageDurations = [0.5, 1, 2, 4, 8, 15]
   const clipListened = correct ? `${stageDurations[guesses.length - 1]}s` : "15s"
+  const isLyricsMode = mode === "lyrics"
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -118,8 +131,10 @@ export function GameModal({
             </p>
           </div>
           <div className="bg-white/[0.03] rounded-lg border border-white/10 p-3 text-center">
-            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Clip Listened</p>
-            <p className="text-xl text-white font-bold">{clipListened}</p>
+            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">
+              {isLyricsMode ? "Clue Level" : "Clip Listened"}
+            </p>
+            <p className="text-xl text-white font-bold">{isLyricsMode ? `${guesses.length} / 6` : clipListened}</p>
           </div>
           <div className="col-span-2 bg-[#10b981]/10 rounded-lg border border-[#10b981]/25 p-3 text-center">
             <p className="text-[10px] text-[#10b981] mb-1 uppercase tracking-[0.1em] font-semibold">Points Earned</p>

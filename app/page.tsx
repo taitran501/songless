@@ -3,8 +3,16 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, Loader2, Music, Youtube } from "lucide-react"
+import { AlertTriangle, CalendarDays, FileText, Loader2, Music, Youtube } from "lucide-react"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
+import { useTracks } from "@/hooks/tracks-store"
+import {
+  DAILY_DATE_STORAGE_KEY,
+  GAME_MODE_STORAGE_KEY,
+  getLyricsModeTracks,
+  getUtcDateKey,
+  selectDailyTracks,
+} from "@/lib/curated-tracks"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,15 +20,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true)
   const [initializingSpotify, setInitializingSpotify] = useState(false)
   const { accessToken, isLoading: isAuthLoading } = useSpotifyAuth()
+  const { setTracks } = useTracks()
 
   useEffect(() => {
     if (isAuthLoading) return
-    if (accessToken) {
-      router.push("/playlist")
-    } else {
-      setLoading(false)
-    }
-  }, [accessToken, isAuthLoading, router])
+    setLoading(false)
+  }, [isAuthLoading])
 
   const handleSpotifyLogin = async () => {
     setInitializingSpotify(true)
@@ -48,6 +53,30 @@ export default function LoginPage() {
   }
 
   const handleGuestPlay = () => router.push("/playlist")
+
+  const startDailyChallenge = () => {
+    const dateKey = getUtcDateKey()
+    const tracks = selectDailyTracks(dateKey)
+    const playlistId = `daily-audio-${dateKey}`
+
+    setTracks(tracks)
+    localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
+    localStorage.setItem("current_playlist_id", playlistId)
+    localStorage.setItem(GAME_MODE_STORAGE_KEY, "audio")
+    localStorage.setItem(DAILY_DATE_STORAGE_KEY, dateKey)
+    router.push("/game")
+  }
+
+  const startLyricsMode = () => {
+    const tracks = getLyricsModeTracks()
+
+    setTracks(tracks)
+    localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
+    localStorage.setItem("current_playlist_id", "lyrics-curated-v1")
+    localStorage.setItem(GAME_MODE_STORAGE_KEY, "lyrics")
+    localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
+    router.push("/game")
+  }
 
   if (loading) {
     return (
@@ -102,7 +131,52 @@ export default function LoginPage() {
         </div>
 
         {/* Mode Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-2xl animate-slide-up">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-4xl animate-slide-up">
+
+          {/* Daily Challenge */}
+          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-[#10b981]/20 hover:border-[#10b981]/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5 hover:shadow-[0_0_40px_rgba(16,185,129,0.08)]">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#10b981]/3 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+            <div className="w-14 h-14 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/25 flex items-center justify-center mb-5">
+              <CalendarDays className="w-7 h-7 text-[#10b981]" />
+            </div>
+
+            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">5 Songs Today</span>
+            <h2 className="font-display text-xl font-bold text-white mb-2">Daily Challenge</h2>
+            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
+              Play the same popular mix each day: USUK, VPop, and Rap.
+            </p>
+
+            <Button
+              onClick={startDailyChallenge}
+              className="w-full h-11 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all duration-300 active:scale-[0.98]"
+            >
+              Start Daily Challenge
+            </Button>
+          </div>
+
+          {/* Lyrics Mode */}
+          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-indigo-400/20 hover:border-indigo-300/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-400/[0.03] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+
+            <div className="w-14 h-14 rounded-2xl bg-indigo-400/10 border border-indigo-300/20 flex items-center justify-center mb-5">
+              <FileText className="w-7 h-7 text-indigo-300" />
+            </div>
+
+            <span className="text-[10px] text-indigo-300 font-semibold uppercase tracking-widest font-display mb-2">No Audio Needed</span>
+            <h2 className="font-display text-xl font-bold text-white mb-2">Partial Lyrics Mode</h2>
+            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
+              Read a hidden lyric-style clue and guess the song without headphones.
+            </p>
+
+            <Button
+              onClick={startLyricsMode}
+              variant="outline"
+              className="w-full h-11 bg-transparent border border-indigo-300/20 hover:bg-indigo-300/10 text-[#dce5d9] font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
+            >
+              Start Lyrics Mode
+            </Button>
+          </div>
 
           {/* Spotify / Pro Mode */}
           <div className="bg-[#090d16]/60 backdrop-blur-xl border border-[#10b981]/20 hover:border-[#10b981]/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5 hover:shadow-[0_0_40px_rgba(16,185,129,0.08)]">
@@ -112,19 +186,23 @@ export default function LoginPage() {
               <Music className="w-7 h-7 text-[#10b981]" />
             </div>
 
-            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">Spotify Connected</span>
-            <h2 className="font-display text-xl font-bold text-white mb-2">Full Experience</h2>
+            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">
+              {accessToken ? "Spotify Connected" : "Spotify Login"}
+            </span>
+            <h2 className="font-display text-xl font-bold text-white mb-2">{accessToken ? "Your Playlists" : "Full Experience"}</h2>
             <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
               Use any Spotify playlist. Audio previews stream directly. Tracks save your progress.
             </p>
 
             <Button
-              onClick={handleSpotifyLogin}
+              onClick={accessToken ? handleGuestPlay : handleSpotifyLogin}
               disabled={initializingSpotify}
               className="w-full h-11 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all duration-300 active:scale-[0.98]"
             >
               {initializingSpotify ? (
                 <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+              ) : accessToken ? (
+                "Open Playlists"
               ) : (
                 "Connect Spotify"
               )}

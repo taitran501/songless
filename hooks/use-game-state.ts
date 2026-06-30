@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import type { GameTrack } from "@/lib/tracks"
 
 export const STAGE_DURATIONS = [500, 1000, 2000, 4000, 8000, 15000] as const
@@ -16,6 +17,8 @@ export function clearSavedGame() {
   localStorage.removeItem(`songless_state_${playlistId}`)
   localStorage.removeItem("current_playlist_id")
   localStorage.removeItem("game_tracks")
+  localStorage.removeItem(GAME_MODE_STORAGE_KEY)
+  localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
 }
 
 export function useGameState({ tracks, tracksLoading }: UseGameStateOptions) {

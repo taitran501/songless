@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2, RotateCcw, Trophy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GameModal } from "@/components/game-modal"
 import { GuessPanel, type GuessSuggestion } from "@/components/game/guess-panel"
+import { LyricsCluePanel } from "@/components/game/lyrics-clue-panel"
 import { PlaybackPanel } from "@/components/game/playback-panel"
 import { ProgressPanel } from "@/components/game/progress-panel"
 import { clearSavedGame, useGameState } from "@/hooks/use-game-state"
@@ -13,8 +14,9 @@ import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { useToast } from "@/hooks/use-toast"
+import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import { isCorrectGuess } from "@/lib/guessing"
-import { isYoutubeTrack, type GameTrack } from "@/lib/tracks"
+import { isYoutubeTrack, type GameMode, type GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
   return value
@@ -29,7 +31,7 @@ function normalizeSearchText(value: string) {
 
 function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSuggestion[] {
   const normalizedQuery = normalizeSearchText(query)
-  if (normalizedQuery.length < 2) return []
+  if (normalizedQuery.length < 3) return []
 
   return tracks
     .map((track) => {
@@ -90,7 +92,16 @@ export default function GamePage() {
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
   const [playlistComplete, setPlaylistComplete] = useState(false)
+  const [gameMode, setGameMode] = useState<GameMode>(() => {
+    if (typeof window === "undefined") return "audio"
+    return localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio"
+  })
+  const [dailyDate, setDailyDate] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return localStorage.getItem(DAILY_DATE_STORAGE_KEY)
+  })
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const isLyricsMode = gameMode === "lyrics"
 
   const {
     currentIndex,
@@ -112,10 +123,15 @@ export default function GamePage() {
   const currentTrack = tracks[currentIndex]
 
   const playback = useAudioPlayback({
-    currentTrack,
+    currentTrack: isLyricsMode ? undefined : currentTrack,
     currentStage,
     stageDurations,
   })
+
+  useEffect(() => {
+    setGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio")
+    setDailyDate(localStorage.getItem(DAILY_DATE_STORAGE_KEY))
+  }, [])
 
   useEffect(() => {
     if (authLoading || tracksLoading) return
@@ -135,6 +151,11 @@ export default function GamePage() {
 
       setIsSearching(true)
       try {
+        if (gameMode === "lyrics") {
+          setSuggestions(getLocalTrackSuggestions(query, tracks))
+          return
+        }
+
         const useSpotifySearch = Boolean(accessToken && currentTrack && !isYoutubeTrack(currentTrack))
         const localSuggestions = useSpotifySearch ? [] : getLocalTrackSuggestions(query, tracks)
 
@@ -182,20 +203,20 @@ export default function GamePage() {
         setIsSearching(false)
       }
     },
-    [accessToken, currentTrack, tracks]
+    [accessToken, currentTrack, gameMode, tracks]
   )
 
   useEffect(() => {
     if (selectedUri) return
     const timeout = setTimeout(() => {
-      if (guess.trim().length > 1) {
+      if (guess.trim().length > 2) {
         void fetchSearchSuggestions(guess)
         setShowSuggestions(true)
       } else {
         setSuggestions([])
         setShowSuggestions(false)
       }
-    }, 300)
+    }, 500)
 
     return () => clearTimeout(timeout)
   }, [fetchSearchSuggestions, guess, selectedUri])
@@ -211,6 +232,47 @@ export default function GamePage() {
     return () => document.removeEventListener("click", handleClickOutside)
   }, [])
 
+  // Background pre-fetching for the next track
+  useEffect(() => {
+    if (gameMode !== "audio") return
+    if (tracksLoading || tracks.length === 0) return
+    const nextIndex = currentIndex + 1
+    if (nextIndex >= tracks.length) return
+
+    const nextTrack = tracks[nextIndex]
+    if (!nextTrack || nextTrack.preview_url) return
+
+    // If it's a YouTube track, it already has videoId or can be derived, no need to search
+    if (nextTrack.source === "youtube") return
+
+    const query = `${nextTrack.artists} - ${nextTrack.name}`
+    const cacheKey = `songless_yt_cache_${encodeURIComponent(query.toLowerCase())}`
+    const cachedId = localStorage.getItem(cacheKey)
+
+    if (cachedId) return // Already cached
+
+    const prefetchNextTrack = async () => {
+      try {
+        const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.videoId) {
+            localStorage.setItem(cacheKey, data.videoId)
+          }
+        }
+      } catch (err) {
+        console.warn("Background prefetch failed for:", query, err)
+      }
+    }
+
+    // Delay prefetch slightly to let the current track playback load first
+    const delayTimeout = setTimeout(() => {
+      void prefetchNextTrack()
+    }, 2000)
+
+    return () => clearTimeout(delayTimeout)
+  }, [currentIndex, gameMode, tracks, tracksLoading])
+
   const resetInput = () => {
     setGuess("")
     setSelectedUri(null)
@@ -219,6 +281,7 @@ export default function GamePage() {
   }
 
   const stopRoundPlayback = async () => {
+    if (isLyricsMode) return
     playback.resetPlayback()
     await playback.pauseCurrentPlayback()
   }
@@ -350,6 +413,7 @@ export default function GamePage() {
     const averageStage = correctCount > 0 ? (solvedStageTotal / correctCount).toFixed(1) : "-"
     const maxScore = tracks.length * stageScores[0]
     const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
+    const completeLabel = dailyDate ? "Daily Complete" : isLyricsMode ? "Lyrics Complete" : "Playlist Complete"
 
     return (
       <div
@@ -362,7 +426,7 @@ export default function GamePage() {
             <div className="w-16 h-16 mx-auto rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center mb-4">
               <Trophy className="w-9 h-9 text-[#10b981]" />
             </div>
-            <p className="font-display text-xs font-semibold text-[#10b981] uppercase tracking-widest mb-2">Playlist Complete</p>
+            <p className="font-display text-xs font-semibold text-[#10b981] uppercase tracking-widest mb-2">{completeLabel}</p>
             <h2 className="text-3xl font-extrabold text-white font-display">Final Score</h2>
           </div>
 
@@ -402,10 +466,14 @@ export default function GamePage() {
               const avgClip = STAGE_DURATIONS_S[clampedIdx]
               return (
                 <div className="col-span-2 bg-white/[0.03] border border-white/10 rounded-xl p-4 text-center">
-                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">Avg. Clip Heard to Solve</p>
-                  <p className="text-2xl font-extrabold text-white">{avgClip}s</p>
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">
+                    {isLyricsMode ? "Avg. Clue Level to Solve" : "Avg. Clip Heard to Solve"}
+                  </p>
+                  <p className="text-2xl font-extrabold text-white">{isLyricsMode ? averageStage : `${avgClip}s`}</p>
                   <p className="text-[10px] text-gray-500 mt-0.5">
-                    {avgClip <= 0.5 ? "Instant recognition — legendary!" : avgClip <= 1 ? "Very fast!" : avgClip <= 2 ? "Solid!" : avgClip <= 4 ? "Getting there" : "Needed some hints"}
+                    {isLyricsMode
+                      ? "Lower is better."
+                      : avgClip <= 0.5 ? "Instant recognition — legendary!" : avgClip <= 1 ? "Very fast!" : avgClip <= 2 ? "Solid!" : avgClip <= 4 ? "Getting there" : "Needed some hints"}
                   </p>
                 </div>
               )
@@ -436,21 +504,23 @@ export default function GamePage() {
       className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col relative overflow-hidden font-sans p-4 sm:p-6 md:p-8 select-none"
       style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
     >
-      <div
-        aria-hidden="true"
-        style={{
-          position: "fixed",
-          left: 0,
-          bottom: 0,
-          width: "200px",
-          height: "200px",
-          opacity: 0.01,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      >
-        <div id="youtube-player"></div>
-      </div>
+      {!isLyricsMode && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: 0,
+            bottom: 0,
+            width: "200px",
+            height: "200px",
+            opacity: 0.01,
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        >
+          <div id="youtube-player"></div>
+        </div>
+      )}
 
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />
@@ -470,23 +540,28 @@ export default function GamePage() {
           totalTracks={tracks.length}
           currentStage={currentStage}
           stageDurations={stageDurations}
-          progress={playback.progress}
-          isPlaying={playback.isPlaying}
+          progress={isLyricsMode ? 100 : playback.progress}
+          isPlaying={isLyricsMode ? false : playback.isPlaying}
           score={score}
           correctCount={correctCount}
+          mode={gameMode}
         />
 
-        <PlaybackPanel
-          isPlayerReady={playback.isPlayerReady}
-          isResolvingAudio={playback.isResolvingAudio}
-          loadingStep={playback.loadingStep}
-          playbackError={playback.playbackError}
-          isPlaying={playback.isPlaying}
-          isPaused={playback.isPaused}
-          onPlay={handlePlay}
-          onPause={() => void playback.pause()}
-          onResume={() => void playback.resume()}
-        />
+        {isLyricsMode && currentTrack ? (
+          <LyricsCluePanel track={currentTrack} currentStage={currentStage} />
+        ) : (
+          <PlaybackPanel
+            isPlayerReady={playback.isPlayerReady}
+            isResolvingAudio={playback.isResolvingAudio}
+            loadingStep={playback.loadingStep}
+            playbackError={playback.playbackError}
+            isPlaying={playback.isPlaying}
+            isPaused={playback.isPaused}
+            onPlay={handlePlay}
+            onPause={() => void playback.pause()}
+            onResume={() => void playback.resume()}
+          />
+        )}
 
         <GuessPanel
           guess={guess}
@@ -511,6 +586,7 @@ export default function GamePage() {
           }}
           onSubmitGuess={() => void handleGuess()}
           onSkip={() => void handleSkip()}
+          mode={gameMode}
         />
 
         <GameModal
@@ -527,6 +603,9 @@ export default function GamePage() {
           trackIndex={modalContent.trackIndex}
           pointsEarned={modalContent.pointsEarned}
           nextLabel={modalContent.trackIndex === tracks.length - 1 ? "VIEW SUMMARY" : "NEXT SONG"}
+          mode={gameMode}
+          dailyDate={dailyDate}
+          score={score}
         />
       </div>
     </div>

@@ -1,5 +1,7 @@
 "use client"
 
+import type { GameMode } from "@/lib/tracks"
+
 interface ProgressPanelProps {
   currentIndex: number
   totalTracks: number
@@ -9,6 +11,7 @@ interface ProgressPanelProps {
   isPlaying: boolean
   score: number
   correctCount: number
+  mode?: GameMode
 }
 
 export function ProgressPanel({
@@ -20,7 +23,10 @@ export function ProgressPanel({
   isPlaying,
   score,
   correctCount,
+  mode = "audio",
 }: ProgressPanelProps) {
+  const isLyricsMode = mode === "lyrics"
+
   return (
     <>
       <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
@@ -45,8 +51,12 @@ export function ProgressPanel({
               <p className="text-white font-extrabold text-lg">{currentStage + 1} / 6</p>
             </div>
             <div className="bg-indigo-500/10 border border-indigo-400/20 rounded-xl px-4 py-2.5 text-center">
-              <p className="text-[10px] text-indigo-300 uppercase tracking-wide">Clip Duration</p>
-              <p className="text-white font-extrabold text-lg">{(stageDurations[currentStage] / 1000).toFixed(1)}s</p>
+              <p className="text-[10px] text-indigo-300 uppercase tracking-wide">
+                {isLyricsMode ? "Clue Level" : "Clip Duration"}
+              </p>
+              <p className="text-white font-extrabold text-lg">
+                {isLyricsMode ? `${currentStage + 1}` : `${(stageDurations[currentStage] / 1000).toFixed(1)}s`}
+              </p>
             </div>
           </div>
         </div>
@@ -63,7 +73,7 @@ export function ProgressPanel({
             }}
           >
             <span className="bg-[#10b981] text-black text-[10px] sm:text-xs font-extrabold px-2.5 py-0.5 rounded-md shadow-[0_0_12px_rgba(16,185,129,0.3)] whitespace-nowrap mb-0.5">
-              {(stageDurations[currentStage] / 1000).toFixed(1)}s
+              {isLyricsMode ? `Clue ${currentStage + 1}` : `${(stageDurations[currentStage] / 1000).toFixed(1)}s`}
             </span>
             <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-[#10b981]" />
           </div>

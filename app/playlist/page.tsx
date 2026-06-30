@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
 import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
+import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
 import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
@@ -555,6 +556,8 @@ export default function PlaylistPage() {
                   
                   // 4. Save processed tracks to store & redirect
                   setTracks(processedTracks)
+                  localStorage.setItem(GAME_MODE_STORAGE_KEY, "audio")
+                  localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
                   router.push("/game")
                 }}
                 className="bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold text-base h-14 w-full rounded-xl shadow-lg hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"

@@ -4,6 +4,7 @@ import { Check, Loader2, Music, Search, SkipForward } from "lucide-react"
 import type { RefObject } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import type { GameMode } from "@/lib/tracks"
 
 export interface GuessSuggestion {
   uri: string
@@ -26,6 +27,7 @@ interface GuessPanelProps {
   onSelectSuggestion: (suggestion: GuessSuggestion) => void
   onSubmitGuess: () => void
   onSkip: () => void
+  mode?: GameMode
 }
 
 export function GuessPanel({
@@ -42,7 +44,10 @@ export function GuessPanel({
   onSelectSuggestion,
   onSubmitGuess,
   onSkip,
+  mode = "audio",
 }: GuessPanelProps) {
+  const isLyricsMode = mode === "lyrics"
+
   return (
     <>
       <div className="bg-[#090d16]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-4 mb-6 space-y-2.5 ring-1 ring-white/5">
@@ -79,7 +84,9 @@ export function GuessPanel({
               {isPast ? (
                 <span>{guesses[index]}</span>
               ) : isCurrent ? (
-                <span className="animate-pulse text-[#6b7280]">Listening window unlocked...</span>
+                <span className="animate-pulse text-[#6b7280]">
+                  {isLyricsMode ? "Lyric clue unlocked..." : "Listening window unlocked..."}
+                </span>
               ) : (
                 <span>Locked</span>
               )}
@@ -92,7 +99,7 @@ export function GuessPanel({
         <div ref={searchContainerRef} className="relative">
           <Input
             type="text"
-            placeholder="Know the song? Search artist or title..."
+            placeholder={isLyricsMode ? "Know the song? Search title..." : "Know the song? Search artist or title..."}
             value={guess}
             onChange={(event) => onGuessChange(event.target.value)}
             onFocus={onFocus}
@@ -128,7 +135,7 @@ export function GuessPanel({
             </div>
           )}
 
-          {showSuggestions && !isSearching && guess.trim().length > 1 && suggestions.length === 0 && (
+          {showSuggestions && !isSearching && guess.trim().length > 2 && suggestions.length === 0 && (
             <div className="mt-2 bg-[#090d16] border border-white/10 rounded-2xl px-4 py-3 shadow-2xl">
               <p className="text-sm text-[#6b7280]">No matching songs found.</p>
             </div>
@@ -137,7 +144,9 @@ export function GuessPanel({
         <div className="flex gap-3">
           <Button onClick={onSkip} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
             <SkipForward className="w-4 h-4 mr-2" />
-            SKIP (+{currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)
+            {isLyricsMode
+              ? currentStage === 5 ? "SKIP (+0)" : "REVEAL NEXT CLUE"
+              : `SKIP (+${currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)`}
           </Button>
           <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={!guess.trim()}>
             <Check className="w-4 h-4 mr-2" />
