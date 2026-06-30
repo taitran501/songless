@@ -1,4 +1,6 @@
 export type TrackSource = "spotify" | "youtube"
+export type GameMode = "audio" | "lyrics"
+export type TrackGenre = "usuk" | "vpop" | "rap"
 
 export interface GameTrack {
   source: TrackSource
@@ -9,6 +11,10 @@ export interface GameTrack {
   albumImage: string | null
   preview_url: string | null
   videoId?: string
+  genre?: TrackGenre
+  lyricsSnippets?: string[]
+  challengeId?: string
+  dailyEligible?: boolean
 }
 
 type LegacyTrack = Partial<GameTrack> & {
@@ -37,6 +43,10 @@ export function normalizeTrack(track: LegacyTrack): GameTrack | null {
     albumImage: track.albumImage ?? null,
     preview_url: track.preview_url ?? null,
     ...(videoId ? { videoId } : {}),
+    ...(track.genre ? { genre: track.genre } : {}),
+    ...(track.lyricsSnippets ? { lyricsSnippets: track.lyricsSnippets } : {}),
+    ...(track.challengeId ? { challengeId: track.challengeId } : {}),
+    ...(track.dailyEligible !== undefined ? { dailyEligible: Boolean(track.dailyEligible) } : {}),
   }
 }
 

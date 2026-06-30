@@ -31,4 +31,24 @@ describe("track normalization", () => {
     assert.equal(track.source, "youtube")
     assert.equal(track.videoId, "6uVJqD2hSGQ")
   })
+
+  it("keeps curated metadata fields", () => {
+    const [track] = normalizeTracks([
+      {
+        source: "youtube",
+        uri: "youtube:abc",
+        name: "Song",
+        artists: "Artist",
+        genre: "vpop",
+        lyricsSnippets: ["A short clue"],
+        challengeId: "track-id",
+        dailyEligible: true,
+      },
+    ])
+
+    assert.equal(track.genre, "vpop")
+    assert.deepEqual(track.lyricsSnippets, ["A short clue"])
+    assert.equal(track.challengeId, "track-id")
+    assert.equal(track.dailyEligible, true)
+  })
 })
