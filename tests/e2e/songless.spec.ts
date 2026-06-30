@@ -224,7 +224,7 @@ test("shows a configuration error when Spotify config is missing", async ({ page
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify Premium" }).click()
+  await page.getByRole("button", { name: "Connect Spotify" }).click()
 
   await expect(page.getByText("Configuration Error")).toBeVisible()
   await expect(page.getByText("SPOTIFY_CLIENT_ID environment variable is not set")).toBeVisible()
@@ -244,7 +244,7 @@ test("redirects to Spotify authorize with the callback page redirect URI", async
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify Premium" }).click()
+  await page.getByRole("button", { name: "Connect Spotify" }).click()
 
   await page.waitForURL(/https:\/\/accounts\.spotify\.com\//)
   const redirectUrl = decodeURIComponent(page.url())
@@ -269,7 +269,7 @@ test("stores tokens and lands on playlist after a successful callback exchange",
   await page.goto("/callback?code=test-code")
 
   await page.waitForURL("**/playlist")
-  await expect(page.getByText("Connect Playlist")).toBeVisible()
+  await expect(page.getByText(/connect playlist/i)).toBeVisible()
 
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBe("new-access-token")
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_refresh_token"))).toBe("new-refresh-token")
@@ -278,7 +278,7 @@ test("stores tokens and lands on playlist after a successful callback exchange",
 test("allows unauthenticated users to access the playlist page as guest", async ({ page }) => {
   await page.goto("/playlist")
 
-  await expect(page.getByText("Connect Playlist")).toBeVisible()
+  await expect(page.getByText(/connect playlist/i)).toBeVisible()
 })
 
 test("loads playlist tracks and enables the start-game state", async ({ page }) => {
@@ -372,7 +372,7 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Play Guest" }).click()
+  await page.getByRole("button", { name: "Play as Guest" }).click()
   await expect(page.getByText("Guest mode is active")).toBeVisible()
 
   await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
@@ -386,6 +386,67 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   await expect(page.getByLabel("Pause playback")).toBeEnabled()
   await page.getByRole("button", { name: /SKIP/ }).click()
   await expect(page.getByText("2 / 6")).toBeVisible()
+})
+
+test("starts the daily challenge as a five-track audio game", async ({ page }) => {
+  await mockYouTubeIframe(page)
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Daily Challenge" }).click()
+
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByLabel("Play preview")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("current_playlist_id"))).toMatch(/^daily-audio-\d{4}-\d{2}-\d{2}$/)
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("audio")
+})
+
+test("keeps daily challenge progress in a daily-specific state key", async ({ page }) => {
+  await mockYouTubeIframe(page)
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Daily Challenge" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+
+  await page.getByRole("button", { name: /SKIP/ }).click()
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const playlistId = window.localStorage.getItem("current_playlist_id")
+      return playlistId ? window.localStorage.getItem(`songless_state_${playlistId}`) : null
+    })
+  }).toContain('"currentStage":1')
+})
+
+test("plays partial lyrics mode without audio controls", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
+
+  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+  await expect(page.getByText("Track 1 of")).toBeVisible()
+  await expect(page.getByLabel("Play preview")).toHaveCount(0)
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("lyrics")
+})
+
+test("reveals another lyrics clue after a wrong guess", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
+  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+
+  await page.getByPlaceholder("Know the song? Search title...").fill("wrong song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+
+  await expect(page.getByText("Lyric clue 2 / 6")).toBeVisible()
+})
+
+test("accepts a correct partial lyrics guess", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
+  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+
+  await page.getByPlaceholder("Know the song? Search title...").fill("Blinding Lights")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
 })
 
 test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
@@ -617,7 +678,7 @@ test("redirects the game page back to playlist when no tracks are loaded", async
   await page.goto("/game")
 
   await page.waitForURL("**/playlist")
-  await expect(page.getByText("Connect Playlist")).toBeVisible()
+  await expect(page.getByText(/connect playlist/i)).toBeVisible()
 })
 
 test("supports the main game controls with mocked Spotify playback", async ({ page }) => {
