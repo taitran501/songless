@@ -390,6 +390,16 @@ test("lets a connected user fall back to guest mode", async ({ page }) => {
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBeNull()
 })
 
+test("shows playlist mode and lets the user return home", async ({ page }) => {
+  await page.goto("/playlist")
+
+  await expect(page.getByText("Mode: Guest Playlist Mode")).toBeVisible()
+  await page.getByRole("button", { name: "Home" }).click()
+
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole("button", { name: "Start Daily Challenge" })).toBeVisible()
+})
+
 test("loads YouTube playlist tracks and enables the start-game state", async ({ page }) => {
   await seedStorage(page, {
     spotify_access_token: "playlist-token",
@@ -459,6 +469,8 @@ test("starts the daily challenge as a five-track audio game", async ({ page }) =
   await page.getByRole("button", { name: "Start Daily Challenge" }).click()
 
   await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Mode: Daily Challenge")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByLabel("Play preview")).toBeVisible()
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("current_playlist_id"))).toMatch(/^daily-audio-\d{4}-\d{2}-\d{2}$/)
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("audio")
@@ -492,6 +504,8 @@ test("plays partial lyrics mode without audio controls", async ({ page }) => {
   await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
 
   await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+  await expect(page.getByText("Mode: Partial Lyrics Mode")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByText("Track 1 of")).toBeVisible()
   await expect(page.getByLabel("Play preview")).toHaveCount(0)
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("lyrics")

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Loader2, RotateCcw, Trophy, X } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Trophy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { GameModal } from "@/components/game-modal"
 import { GuessPanel, type GuessSuggestion } from "@/components/game/guess-panel"
@@ -366,6 +366,12 @@ export default function GamePage() {
     router.push("/playlist")
   }
 
+  const handleBackHome = () => {
+    playback.resetPlayback()
+    clearSavedGame()
+    router.push("/")
+  }
+
   const handleReplayPlaylist = async () => {
     await stopRoundPlayback()
     resetGame()
@@ -414,6 +420,7 @@ export default function GamePage() {
     const maxScore = tracks.length * stageScores[0]
     const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
     const completeLabel = dailyDate ? "Daily Complete" : isLyricsMode ? "Lyrics Complete" : "Playlist Complete"
+    const completeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
 
     return (
       <div
@@ -422,6 +429,16 @@ export default function GamePage() {
         style={{ backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.018) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
       >
         <div className="w-full max-w-xl bg-[#090d16]/70 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl ring-1 ring-white/5">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <Button onClick={handleBackHome} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white">
+              <ArrowLeft className="w-4 h-4 mr-1.5" />
+              Home
+            </Button>
+            <div className="rounded-full border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#10b981]">
+              Mode: {completeModeLabel}
+            </div>
+          </div>
+
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto rounded-2xl bg-[#10b981]/10 border border-[#10b981]/30 flex items-center justify-center mb-4">
               <Trophy className="w-9 h-9 text-[#10b981]" />
@@ -498,6 +515,9 @@ export default function GamePage() {
     return null
   }
 
+  const activeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
+  const activeModeDetail = dailyDate ? dailyDate : isLyricsMode ? "Lyrics clues" : "Audio clips"
+
   return (
     <div
       key="game-active"
@@ -526,12 +546,28 @@ export default function GamePage() {
       <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />
 
       <div className="max-w-2xl mx-auto w-full relative z-10 flex-1 flex flex-col justify-center py-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="font-display text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">
-            Songless<span className="text-white font-light">Unlimited</span>
-          </h1>
-          <Button onClick={handleExitPlaylist} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#9ca3af] hover:bg-white/5 hover:text-white">
-            <X className="w-4 h-4 mr-1.5" /> Exit Game
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={handleBackHome} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white">
+                <ArrowLeft className="w-4 h-4 mr-1.5" />
+                Home
+              </Button>
+              <h1 className="font-display text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">
+                Songless<span className="text-white font-light">Unlimited</span>
+              </h1>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#10b981]">
+                Mode: {activeModeLabel}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9ca3af]">
+                {activeModeDetail}
+              </span>
+            </div>
+          </div>
+          <Button onClick={handleExitPlaylist} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#9ca3af] hover:bg-white/5 hover:text-white sm:mt-1">
+            <X className="w-4 h-4 mr-1.5" /> Exit to Playlist
           </Button>
         </div>
 

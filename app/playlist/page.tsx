@@ -13,7 +13,7 @@ import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
-import { Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
+import { ArrowLeft, Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
@@ -34,6 +34,7 @@ export default function PlaylistPage() {
   const { tracks, setTracks } = useTracks()
   const { accessToken, logout } = useSpotifyAuth()
   const hasSpotifyConnection = Boolean(accessToken)
+  const modeLabel = hasSpotifyConnection ? "Spotify Playlist Mode" : "Guest Playlist Mode"
 
   // Load recent playlists on mount and restore active playlist
   useEffect(() => {
@@ -211,6 +212,21 @@ export default function PlaylistPage() {
       <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
 
       <div className="max-w-2xl mx-auto w-full relative z-10 flex-1 flex flex-col justify-center py-6 sm:py-12">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/")}
+            className="bg-[#030712]/70 border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white h-10 rounded-xl font-semibold"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Home
+          </Button>
+          <div className="rounded-full border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#10b981]">
+            Mode: {modeLabel}
+          </div>
+        </div>
+
         <header className="text-center mb-10 animate-fade-in">
 
           <h1 className="font-display text-5xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent mb-3 drop-shadow-[0_0_30px_rgba(16,185,129,0.2)]">
