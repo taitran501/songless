@@ -1,6 +1,8 @@
 export type TrackSource = "spotify" | "youtube"
 export type GameMode = "audio" | "lyrics"
 export type TrackGenre = "usuk" | "vpop" | "rap"
+export type TrackAudioSourceType = "official_audio" | "lyric_video" | "music_video" | "performance" | "unknown"
+export type AudioAnalysisStatus = "approved" | "needs_review" | "failed"
 
 export interface GameTrack {
   source: TrackSource
@@ -16,6 +18,9 @@ export interface GameTrack {
   challengeId?: string
   dailyEligible?: boolean
   audioStartSeconds?: number
+  sourceType?: TrackAudioSourceType
+  audioAnalysisStatus?: AudioAnalysisStatus
+  audioStartConfidence?: number
 }
 
 type LegacyTrack = Partial<GameTrack> & {
@@ -49,6 +54,9 @@ export function normalizeTrack(track: LegacyTrack): GameTrack | null {
     ...(track.challengeId ? { challengeId: track.challengeId } : {}),
     ...(track.dailyEligible !== undefined ? { dailyEligible: Boolean(track.dailyEligible) } : {}),
     ...(track.audioStartSeconds !== undefined ? { audioStartSeconds: Number(track.audioStartSeconds) || 0 } : {}),
+    ...(track.sourceType ? { sourceType: track.sourceType } : {}),
+    ...(track.audioAnalysisStatus ? { audioAnalysisStatus: track.audioAnalysisStatus } : {}),
+    ...(track.audioStartConfidence !== undefined ? { audioStartConfidence: Number(track.audioStartConfidence) || 0 } : {}),
   }
 }
 

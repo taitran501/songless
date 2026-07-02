@@ -1,3 +1,5 @@
+import { CURATED_SONG_SEEDS, type CuratedSongSeed } from "@/lib/curated-song-seeds"
+import { CURATED_TRACK_ANALYSIS, type CuratedTrackAnalysis } from "@/lib/curated-track-analysis"
 import type { GameTrack, TrackGenre } from "@/lib/tracks"
 
 export const GAME_MODE_STORAGE_KEY = "songless_game_mode"
@@ -13,178 +15,36 @@ export function getUtcDateKey(date = new Date()) {
   return date.toISOString().slice(0, 10)
 }
 
-function youtubeTrack(input: {
-  id: string
-  name: string
-  artists: string
-  genre: TrackGenre
-  videoId: string
-  audioStartSeconds?: number
-  lyricsSnippets?: string[]
-}): GameTrack {
+export function resolveAudioStartSeconds(analysis?: CuratedTrackAnalysis) {
+  if (!analysis || analysis.status !== "approved") return null
+  const value = analysis.manualAudioStartSeconds ?? analysis.detectedAudioStartSeconds
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : null
+}
+
+function youtubeTrack(seed: CuratedSongSeed): GameTrack {
+  const analysis = CURATED_TRACK_ANALYSIS[seed.id]
+  const audioStartSeconds = resolveAudioStartSeconds(analysis)
+
   return {
     source: "youtube",
-    uri: `youtube:${input.videoId}`,
-    videoId: input.videoId,
-    name: input.name,
-    artists: input.artists,
+    uri: `youtube:${seed.videoId}`,
+    videoId: seed.videoId,
+    name: seed.name,
+    artists: seed.artists,
     duration_ms: 0,
-    albumImage: `https://i.ytimg.com/vi/${input.videoId}/hqdefault.jpg`,
+    albumImage: `https://i.ytimg.com/vi/${seed.videoId}/hqdefault.jpg`,
     preview_url: null,
-    genre: input.genre,
-    challengeId: input.id,
-    dailyEligible: true,
-    audioStartSeconds: input.audioStartSeconds || 0,
-    ...(input.lyricsSnippets ? { lyricsSnippets: input.lyricsSnippets } : {}),
+    genre: seed.genre,
+    challengeId: seed.id,
+    dailyEligible: audioStartSeconds !== null,
+    sourceType: seed.sourceType,
+    lyricsSnippets: seed.lyricsSnippets,
+    ...(audioStartSeconds !== null ? { audioStartSeconds } : {}),
+    ...(analysis ? { audioAnalysisStatus: analysis.status, audioStartConfidence: analysis.confidence } : {}),
   }
 }
 
-export const CURATED_TRACKS: GameTrack[] = [
-  youtubeTrack({
-    id: "usuk-blinding-lights",
-    name: "Blinding Lights",
-    artists: "The Weeknd",
-    genre: "usuk",
-    videoId: "4NRXx6U8ABQ",
-    audioStartSeconds: 20,
-    lyricsSnippets: ["A city night keeps a lonely heart awake under bright signs."],
-  }),
-  youtubeTrack({
-    id: "usuk-shape-of-you",
-    name: "Shape of You",
-    artists: "Ed Sheeran",
-    genre: "usuk",
-    videoId: "JGwWNGJdvx8",
-    audioStartSeconds: 7,
-    lyricsSnippets: ["A dance floor meeting turns into a playful love story."],
-  }),
-  youtubeTrack({
-    id: "usuk-hello",
-    name: "Hello",
-    artists: "Adele",
-    genre: "usuk",
-    videoId: "YQHsXMglC9A",
-    audioStartSeconds: 26,
-    lyricsSnippets: ["An old call carries regret across a long quiet distance."],
-  }),
-  youtubeTrack({
-    id: "usuk-bad-guy",
-    name: "bad guy",
-    artists: "Billie Eilish",
-    genre: "usuk",
-    videoId: "DyDfgMOUjCI",
-    audioStartSeconds: 15,
-    lyricsSnippets: ["A whispery character plays with danger and a crooked smile."],
-  }),
-  youtubeTrack({
-    id: "usuk-blank-space",
-    name: "Blank Space",
-    artists: "Taylor Swift",
-    genre: "usuk",
-    videoId: "e-ORhEE9VVg",
-    audioStartSeconds: 11,
-    lyricsSnippets: ["A glamorous romance turns messy inside a sharp pop diary."],
-  }),
-  youtubeTrack({
-    id: "usuk-levitating",
-    name: "Levitating",
-    artists: "Dua Lipa",
-    genre: "usuk",
-    videoId: "TUVcZfQe-Kw",
-    audioStartSeconds: 8,
-    lyricsSnippets: ["A disco sky lifts two people above the ordinary night."],
-  }),
-  youtubeTrack({
-    id: "vpop-hay-trao-cho-anh",
-    name: "Hay Trao Cho Anh",
-    artists: "Son Tung M-TP",
-    genre: "vpop",
-    videoId: "knW7-x7Y7RE",
-    audioStartSeconds: 28,
-    lyricsSnippets: ["A tropical crush asks for attention with glossy summer confidence."],
-  }),
-  youtubeTrack({
-    id: "vpop-see-tinh",
-    name: "See Tinh",
-    artists: "Hoang Thuy Linh",
-    genre: "vpop",
-    videoId: "gJHSDZfJrRY",
-    audioStartSeconds: 18,
-    lyricsSnippets: ["A bright folk-pop flirt spins around a playful heartbeat."],
-  }),
-  youtubeTrack({
-    id: "vpop-nang-tho",
-    name: "Nang Tho",
-    artists: "Hoang Dung",
-    genre: "vpop",
-    videoId: "Zzn9-ATB9aU",
-    audioStartSeconds: 14,
-    lyricsSnippets: ["A soft memory paints someone gentle like a poem in sunlight."],
-  }),
-  youtubeTrack({
-    id: "vpop-co-chac-yeu-la-day",
-    name: "Co Chac Yeu La Day",
-    artists: "Son Tung M-TP",
-    genre: "vpop",
-    videoId: "6t-MjBazs3o",
-    audioStartSeconds: 22,
-    lyricsSnippets: ["A sweet question turns a crush into a colorful confession."],
-  }),
-  youtubeTrack({
-    id: "vpop-buoc-qua-nhau",
-    name: "Buoc Qua Nhau",
-    artists: "Vu",
-    genre: "vpop",
-    videoId: "Llw9Q6akRo4",
-    audioStartSeconds: 12,
-    lyricsSnippets: ["Two people pass each other while the city keeps moving."],
-  }),
-  youtubeTrack({
-    id: "vpop-de-vuong",
-    name: "De Vuong",
-    artists: "Dinh Dung",
-    genre: "vpop",
-    videoId: "U1IgyEtrPjA",
-    audioStartSeconds: 18,
-    lyricsSnippets: ["A dramatic heart holds on after love becomes unfinished."],
-  }),
-  youtubeTrack({
-    id: "rap-see-you-again",
-    name: "See You Again",
-    artists: "Wiz Khalifa, Charlie Puth",
-    genre: "rap",
-    videoId: "RgKAFK5djSk",
-    audioStartSeconds: 12,
-    lyricsSnippets: ["A goodbye becomes a promise to meet beyond the road."],
-  }),
-  youtubeTrack({
-    id: "rap-gods-plan",
-    name: "God's Plan",
-    artists: "Drake",
-    genre: "rap",
-    videoId: "xpVfcZ0ZcFM",
-    audioStartSeconds: 5,
-    lyricsSnippets: ["Success, pressure, and gratitude move through a calm flex."],
-  }),
-  youtubeTrack({
-    id: "rap-sicko-mode",
-    name: "SICKO MODE",
-    artists: "Travis Scott",
-    genre: "rap",
-    videoId: "6ONRf7h3Mdk",
-    audioStartSeconds: 14,
-    lyricsSnippets: ["A beat switch turns a night ride into a stadium rush."],
-  }),
-  youtubeTrack({
-    id: "rap-bigcityboi",
-    name: "Bigcityboi",
-    artists: "Binz",
-    genre: "rap",
-    videoId: "jS7sT1JRF3c",
-    audioStartSeconds: 19,
-    lyricsSnippets: ["A confident city character walks through nightlife with style."],
-  }),
-]
+export const CURATED_TRACKS: GameTrack[] = CURATED_SONG_SEEDS.map((seed) => youtubeTrack(seed))
 
 function hashString(value: string) {
   let hash = 2166136261
@@ -216,10 +76,19 @@ function shuffleTracks(tracks: GameTrack[], seed: string) {
   return copy
 }
 
-export function selectDailyTracks(dateKey = getUtcDateKey()) {
+export function selectDailyTracks(dateKey = getUtcDateKey(), tracks = CURATED_TRACKS) {
   return (Object.keys(DAILY_GENRE_TARGETS) as TrackGenre[]).flatMap((genre) => {
     const target = DAILY_GENRE_TARGETS[genre]
-    const pool = CURATED_TRACKS.filter((track) => track.dailyEligible && track.genre === genre)
+    const pool = tracks.filter(
+      (track) =>
+        track.dailyEligible &&
+        track.audioAnalysisStatus === "approved" &&
+        typeof track.audioStartSeconds === "number" &&
+        track.genre === genre
+    )
+    if (pool.length < target) {
+      throw new Error(`Daily challenge needs ${target} approved ${genre} tracks, but only ${pool.length} are available.`)
+    }
     return shuffleTracks(pool, `${dateKey}-${genre}`).slice(0, target)
   })
 }
