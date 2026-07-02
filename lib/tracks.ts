@@ -15,6 +15,7 @@ export interface GameTrack {
   lyricsSnippets?: string[]
   challengeId?: string
   dailyEligible?: boolean
+  audioStartSeconds?: number
 }
 
 type LegacyTrack = Partial<GameTrack> & {
@@ -47,6 +48,7 @@ export function normalizeTrack(track: LegacyTrack): GameTrack | null {
     ...(track.lyricsSnippets ? { lyricsSnippets: track.lyricsSnippets } : {}),
     ...(track.challengeId ? { challengeId: track.challengeId } : {}),
     ...(track.dailyEligible !== undefined ? { dailyEligible: Boolean(track.dailyEligible) } : {}),
+    ...(track.audioStartSeconds !== undefined ? { audioStartSeconds: Number(track.audioStartSeconds) || 0 } : {}),
   }
 }
 

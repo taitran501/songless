@@ -19,6 +19,7 @@ function youtubeTrack(input: {
   artists: string
   genre: TrackGenre
   videoId: string
+  audioStartSeconds?: number
   lyricsSnippets?: string[]
 }): GameTrack {
   return {
@@ -33,6 +34,7 @@ function youtubeTrack(input: {
     genre: input.genre,
     challengeId: input.id,
     dailyEligible: true,
+    audioStartSeconds: input.audioStartSeconds || 0,
     ...(input.lyricsSnippets ? { lyricsSnippets: input.lyricsSnippets } : {}),
   }
 }
@@ -44,6 +46,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "The Weeknd",
     genre: "usuk",
     videoId: "4NRXx6U8ABQ",
+    audioStartSeconds: 20,
     lyricsSnippets: ["A city night keeps a lonely heart awake under bright signs."],
   }),
   youtubeTrack({
@@ -52,6 +55,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Ed Sheeran",
     genre: "usuk",
     videoId: "JGwWNGJdvx8",
+    audioStartSeconds: 7,
     lyricsSnippets: ["A dance floor meeting turns into a playful love story."],
   }),
   youtubeTrack({
@@ -60,6 +64,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Adele",
     genre: "usuk",
     videoId: "YQHsXMglC9A",
+    audioStartSeconds: 26,
     lyricsSnippets: ["An old call carries regret across a long quiet distance."],
   }),
   youtubeTrack({
@@ -68,6 +73,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Billie Eilish",
     genre: "usuk",
     videoId: "DyDfgMOUjCI",
+    audioStartSeconds: 15,
     lyricsSnippets: ["A whispery character plays with danger and a crooked smile."],
   }),
   youtubeTrack({
@@ -76,6 +82,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Taylor Swift",
     genre: "usuk",
     videoId: "e-ORhEE9VVg",
+    audioStartSeconds: 11,
     lyricsSnippets: ["A glamorous romance turns messy inside a sharp pop diary."],
   }),
   youtubeTrack({
@@ -84,6 +91,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Dua Lipa",
     genre: "usuk",
     videoId: "TUVcZfQe-Kw",
+    audioStartSeconds: 8,
     lyricsSnippets: ["A disco sky lifts two people above the ordinary night."],
   }),
   youtubeTrack({
@@ -92,6 +100,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Son Tung M-TP",
     genre: "vpop",
     videoId: "knW7-x7Y7RE",
+    audioStartSeconds: 28,
     lyricsSnippets: ["A tropical crush asks for attention with glossy summer confidence."],
   }),
   youtubeTrack({
@@ -100,6 +109,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Hoang Thuy Linh",
     genre: "vpop",
     videoId: "gJHSDZfJrRY",
+    audioStartSeconds: 18,
     lyricsSnippets: ["A bright folk-pop flirt spins around a playful heartbeat."],
   }),
   youtubeTrack({
@@ -108,6 +118,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Hoang Dung",
     genre: "vpop",
     videoId: "Zzn9-ATB9aU",
+    audioStartSeconds: 14,
     lyricsSnippets: ["A soft memory paints someone gentle like a poem in sunlight."],
   }),
   youtubeTrack({
@@ -116,6 +127,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Son Tung M-TP",
     genre: "vpop",
     videoId: "6t-MjBazs3o",
+    audioStartSeconds: 22,
     lyricsSnippets: ["A sweet question turns a crush into a colorful confession."],
   }),
   youtubeTrack({
@@ -124,6 +136,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Vu",
     genre: "vpop",
     videoId: "Llw9Q6akRo4",
+    audioStartSeconds: 12,
     lyricsSnippets: ["Two people pass each other while the city keeps moving."],
   }),
   youtubeTrack({
@@ -132,6 +145,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Dinh Dung",
     genre: "vpop",
     videoId: "U1IgyEtrPjA",
+    audioStartSeconds: 18,
     lyricsSnippets: ["A dramatic heart holds on after love becomes unfinished."],
   }),
   youtubeTrack({
@@ -140,6 +154,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Wiz Khalifa, Charlie Puth",
     genre: "rap",
     videoId: "RgKAFK5djSk",
+    audioStartSeconds: 12,
     lyricsSnippets: ["A goodbye becomes a promise to meet beyond the road."],
   }),
   youtubeTrack({
@@ -148,6 +163,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Drake",
     genre: "rap",
     videoId: "xpVfcZ0ZcFM",
+    audioStartSeconds: 5,
     lyricsSnippets: ["Success, pressure, and gratitude move through a calm flex."],
   }),
   youtubeTrack({
@@ -156,6 +172,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Travis Scott",
     genre: "rap",
     videoId: "6ONRf7h3Mdk",
+    audioStartSeconds: 14,
     lyricsSnippets: ["A beat switch turns a night ride into a stadium rush."],
   }),
   youtubeTrack({
@@ -164,6 +181,7 @@ export const CURATED_TRACKS: GameTrack[] = [
     artists: "Binz",
     genre: "rap",
     videoId: "jS7sT1JRF3c",
+    audioStartSeconds: 19,
     lyricsSnippets: ["A confident city character walks through nightlife with style."],
   }),
 ]

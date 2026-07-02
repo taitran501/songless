@@ -34,6 +34,13 @@ const mockYoutubeTracks = [
   },
 ]
 
+const mockYoutubeTrackWithAudioStart = [
+  {
+    ...mockYoutubeTracks[0],
+    audioStartSeconds: 17,
+  },
+]
+
 const mockSpotifyNoPreviewTracks = [
   {
     source: "spotify",
@@ -499,6 +506,21 @@ test("plays direct YouTube playlist tracks through the YouTube player", async ({
 
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBe(1)
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.seek.length)).toBeGreaterThan(0)
+})
+
+test("starts YouTube playback from the configured audio start point", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockYoutubeTrackWithAudioStart),
+    current_playlist_id: "youtube-start-offset",
+  })
+
+  await page.goto("/game")
+  await expect(page.getByText("Track 1 of 1")).toBeVisible()
+
+  await page.getByLabel("Play preview").click()
+
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.seek.at(-1))).toBe(17)
 })
 
 test("shows an audio error when YouTube fallback search fails", async ({ page }) => {

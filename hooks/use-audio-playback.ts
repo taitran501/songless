@@ -275,6 +275,7 @@ export function useAudioPlayback({
     if (playbackError) return false
     const currentPlaySessionId = ++playSessionIdRef.current
     const duration = stageDurations[currentStage]
+    const audioStartSeconds = currentTrack.audioStartSeconds || 0
     clearPlaybackTimers()
 
     if (currentTrack.preview_url && audioRef.current) {
@@ -307,7 +308,7 @@ export function useAudioPlayback({
       try {
         ytPlayer.unMute?.()
         ytPlayer.setVolume?.(100)
-        ytPlayer.seekTo(positionMs / 1000)
+        ytPlayer.seekTo(audioStartSeconds + positionMs / 1000)
         ytPlayer.playVideo()
         setIsPlaying(true)
         setIsPaused(false)

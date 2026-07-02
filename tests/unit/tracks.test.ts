@@ -43,6 +43,7 @@ describe("track normalization", () => {
         lyricsSnippets: ["A short clue"],
         challengeId: "track-id",
         dailyEligible: true,
+        audioStartSeconds: 12,
       },
     ])
 
@@ -50,5 +51,6 @@ describe("track normalization", () => {
     assert.deepEqual(track.lyricsSnippets, ["A short clue"])
     assert.equal(track.challengeId, "track-id")
     assert.equal(track.dailyEligible, true)
+    assert.equal(track.audioStartSeconds, 12)
   })
 })
