@@ -17,6 +17,10 @@ interface UseAudioPlaybackOptions {
   stageDurations: readonly number[]
 }
 
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
 export function useAudioPlayback({
   currentTrack,
   currentStage,
@@ -306,10 +310,21 @@ export function useAudioPlayback({
 
     if (youtubeVideoId && ytPlayer && typeof ytPlayer.playVideo === "function") {
       try {
+        const targetSeconds = audioStartSeconds + positionMs / 1000
         ytPlayer.unMute?.()
         ytPlayer.setVolume?.(100)
-        ytPlayer.seekTo(audioStartSeconds + positionMs / 1000)
+        ytPlayer.pauseVideo?.()
+        ytPlayer.seekTo(targetSeconds, true)
+        await wait(80)
+        if (currentPlaySessionId !== playSessionIdRef.current) return false
         ytPlayer.playVideo()
+        await wait(120)
+        if (currentPlaySessionId === playSessionIdRef.current) {
+          ytPlayer.unMute?.()
+          ytPlayer.setVolume?.(100)
+          ytPlayer.playVideo()
+        }
+        if (currentPlaySessionId !== playSessionIdRef.current) return false
         setIsPlaying(true)
         setIsPaused(false)
         setProgress((positionMs / duration) * 100)

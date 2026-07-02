@@ -190,6 +190,63 @@ async function mockYouTubeIframe(page: Page) {
   })
 }
 
+async function mockSeekSensitiveYouTubeIframe(page: Page) {
+  await page.route("https://www.youtube.com/iframe_api", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: `
+        (() => {
+          window.__ytEvents = { cue: [], play: 0, pause: 0, seek: [], audible: 0, ignoredPlay: 0 };
+          class MockYouTubePlayer {
+            constructor(id, config) {
+              this.id = id;
+              this.config = config;
+              this.lastSeekAt = 0;
+              this.isPlaying = false;
+              setTimeout(() => {
+                if (config.events && config.events.onReady) {
+                  config.events.onReady({ target: this });
+                }
+              }, 0);
+            }
+            cueVideoById(videoId) { window.__ytEvents.cue.push(videoId); }
+            seekTo(seconds) {
+              window.__ytEvents.seek.push(seconds);
+              this.lastSeekAt = Date.now();
+              this.isPlaying = false;
+            }
+            playVideo() {
+              window.__ytEvents.play += 1;
+              if (Date.now() - this.lastSeekAt < 50) {
+                window.__ytEvents.ignoredPlay += 1;
+                return;
+              }
+              if (!this.isPlaying) {
+                window.__ytEvents.audible += 1;
+              }
+              this.isPlaying = true;
+            }
+            pauseVideo() {
+              window.__ytEvents.pause += 1;
+              this.isPlaying = false;
+            }
+            stopVideo() { this.isPlaying = false; }
+            unMute() {}
+            setVolume() {}
+          }
+          window.YT = { Player: MockYouTubePlayer };
+          setTimeout(() => {
+            if (window.onYouTubeIframeAPIReady) {
+              window.onYouTubeIframeAPIReady();
+            }
+          }, 0);
+        })();
+      `,
+    })
+  })
+}
+
 async function mockPremiumPlayback(page: Page) {
   await page.route(/https:\/\/api\.spotify\.com\/v1\/me\/player$/, async (route: Route) => {
     const method = route.request().method()
@@ -510,8 +567,30 @@ test("plays direct YouTube playlist tracks through the YouTube player", async ({
 
   await page.getByLabel("Play preview").click()
 
-  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBe(1)
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(0)
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.seek.length)).toBeGreaterThan(0)
+})
+
+test("plays YouTube audio after repeated skips without alternating silence", async ({ page }) => {
+  await mockSeekSensitiveYouTubeIframe(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockYoutubeTrackWithAudioStart),
+    current_playlist_id: "youtube-repeat-start",
+  })
+
+  await page.goto("/game")
+  await expect(page.getByText("Track 1 of 1")).toBeVisible()
+
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.audible)).toBe(1)
+
+  await page.getByRole("button", { name: /SKIP/ }).click()
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.audible)).toBe(2)
+
+  await page.getByRole("button", { name: /SKIP/ }).click()
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.audible)).toBe(3)
 })
 
 test("starts YouTube playback from the configured audio start point", async ({ page }) => {
@@ -574,7 +653,7 @@ test("falls back from Spotify no-preview tracks to YouTube playback", async ({ p
 
   await page.getByLabel("Play preview").click()
 
-  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBe(1)
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(0)
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.cue)).toContain("6uVJqD2hSGQ")
 })
 
