@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { CURATED_TRACKS, resolveAudioStartSeconds, selectDailyTracks } from "@/lib/curated-tracks"
+import { CURATED_TRACKS, getLyricsModeTracks, resolveAudioStartSeconds, selectDailyTracks } from "@/lib/curated-tracks"
 import { CURATED_SONG_SEEDS } from "@/lib/curated-song-seeds"
 import type { CuratedTrackAnalysis } from "@/lib/curated-track-analysis"
 import type { GameTrack } from "@/lib/tracks"
@@ -82,5 +82,19 @@ describe("daily curated selector", () => {
     }
 
     assert.equal(resolveAudioStartSeconds(analysis), 9)
+  })
+
+  it("starts lyrics mode with a VPop-forward mix", () => {
+    const tracks = getLyricsModeTracks()
+    const firstTenCounts = tracks.slice(0, 10).reduce(
+      (total, track) => {
+        if (track.genre) total[track.genre] += 1
+        return total
+      },
+      { usuk: 0, vpop: 0, rap: 0 }
+    )
+
+    assert.equal(tracks[0].genre, "vpop")
+    assert.ok(firstTenCounts.vpop >= firstTenCounts.usuk)
   })
 })

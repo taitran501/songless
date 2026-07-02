@@ -32,4 +32,10 @@ describe("lyrics clues", () => {
     assert.ok(early.includes("----"))
     assert.equal(late.includes("----"), false)
   })
+
+  it("keeps short clues partially hidden until the final stage", () => {
+    const clue = buildLyricsClue(track, 2)
+
+    assert.ok(clue.includes("----"))
+  })
 })

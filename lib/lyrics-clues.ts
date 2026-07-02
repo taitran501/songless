@@ -1,6 +1,6 @@
 import type { GameTrack } from "@/lib/tracks"
 
-const REVEAL_COUNTS = [4, 7, 10, 13, 16, Number.MAX_SAFE_INTEGER] as const
+const REVEAL_RATIOS = [0.22, 0.32, 0.44, 0.58, 0.74, 1] as const
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -28,12 +28,24 @@ export function buildLyricsClue(track: GameTrack, stage: number) {
   const snippet = track.lyricsSnippets?.[0] || "No lyric clue is available for this track."
   const masked = maskTitleAndArtistWords(snippet, track)
   const words = masked.split(/\s+/).filter(Boolean)
-  const revealCount = REVEAL_COUNTS[Math.max(0, Math.min(stage, REVEAL_COUNTS.length - 1))]
+  const boundedStage = Math.max(0, Math.min(stage, REVEAL_RATIOS.length - 1))
+  const ratio = REVEAL_RATIOS[boundedStage]
+  const revealableCount = words.filter((word) => word !== "____").length
+  const revealCount =
+    ratio === 1
+      ? revealableCount
+      : Math.max(1, Math.min(revealableCount - 1, Math.floor(revealableCount * ratio)))
+  let revealed = 0
 
   return words
-    .map((word, index) => {
+    .map((word) => {
       if (word === "____") return word
-      return index < revealCount ? word : "----"
+      if (revealed < revealCount) {
+        revealed++
+        return word
+      }
+      revealed++
+      return "----"
     })
     .join(" ")
 }

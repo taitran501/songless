@@ -456,7 +456,7 @@ test("accepts a correct partial lyrics guess", async ({ page }) => {
   await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
   await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
 
-  await page.getByPlaceholder("Know the song? Search title...").fill("Blinding Lights")
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hay Trao Cho Anh")
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
 
   await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()

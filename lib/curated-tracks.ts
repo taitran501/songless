@@ -94,5 +94,21 @@ export function selectDailyTracks(dateKey = getUtcDateKey(), tracks = CURATED_TR
 }
 
 export function getLyricsModeTracks() {
-  return CURATED_TRACKS.filter((track) => track.lyricsSnippets && track.lyricsSnippets.length > 0)
+  const tracks = CURATED_TRACKS.filter((track) => track.lyricsSnippets && track.lyricsSnippets.length > 0)
+  const pools: Record<TrackGenre, GameTrack[]> = {
+    vpop: tracks.filter((track) => track.genre === "vpop"),
+    usuk: tracks.filter((track) => track.genre === "usuk"),
+    rap: tracks.filter((track) => track.genre === "rap"),
+  }
+  const order: TrackGenre[] = ["vpop", "usuk", "rap", "vpop", "usuk"]
+  const mixed: GameTrack[] = []
+
+  while (Object.values(pools).some((pool) => pool.length > 0)) {
+    for (const genre of order) {
+      const track = pools[genre].shift()
+      if (track) mixed.push(track)
+    }
+  }
+
+  return mixed
 }
