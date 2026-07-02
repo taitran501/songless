@@ -38,6 +38,7 @@ next-env.d.ts
 # local dev/test scratch files
 test-*.html
 debug-*.md
+/.audio-start-cache/
 /pnpm-lock.yaml
 /styles/
 

@@ -12,6 +12,7 @@
     "build:check": "next build && echo '✅ Build successful!'",
     "vercel-build": "next build",
     "check-env": "node scripts/check-env.js",
+    "analyze:audio-start": "tsx scripts/analyze-audio-start.ts",
     "test:e2e": "playwright test",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts"
   },
