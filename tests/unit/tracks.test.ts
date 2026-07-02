@@ -44,6 +44,9 @@ describe("track normalization", () => {
         challengeId: "track-id",
         dailyEligible: true,
         audioStartSeconds: 12,
+        sourceType: "official_audio",
+        audioAnalysisStatus: "approved",
+        audioStartConfidence: 0.91,
       },
     ])
 
@@ -52,5 +55,8 @@ describe("track normalization", () => {
     assert.equal(track.challengeId, "track-id")
     assert.equal(track.dailyEligible, true)
     assert.equal(track.audioStartSeconds, 12)
+    assert.equal(track.sourceType, "official_audio")
+    assert.equal(track.audioAnalysisStatus, "approved")
+    assert.equal(track.audioStartConfidence, 0.91)
   })
 })

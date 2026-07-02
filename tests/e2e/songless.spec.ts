@@ -405,6 +405,12 @@ test("starts the daily challenge as a five-track audio game", async ({ page }) =
   await expect(page.getByLabel("Play preview")).toBeVisible()
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("current_playlist_id"))).toMatch(/^daily-audio-\d{4}-\d{2}-\d{2}$/)
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("audio")
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+      return tracks.length === 5 && tracks.every((track: any) => track.audioAnalysisStatus === "approved" && typeof track.audioStartSeconds === "number")
+    })
+  }).toBe(true)
 })
 
 test("keeps daily challenge progress in a daily-specific state key", async ({ page }) => {
