@@ -24,6 +24,7 @@ const DEFAULT_SAMPLE_RATE = 22050
 const DEFAULT_FRAME_SIZE = 1024
 const DEFAULT_HOP_SIZE = 512
 const DEFAULT_SUSTAINED_SECONDS = 1.6
+const DEFAULT_AUDIBLE_SECONDS = 0.45
 
 function percentile(values: number[], ratio: number) {
   if (values.length === 0) return 0
@@ -38,6 +39,24 @@ function buildHannWindow(size: number) {
     window[index] = 0.5 * (1 - Math.cos((2 * Math.PI * index) / (size - 1)))
   }
   return window
+}
+
+function findAudibleStart(features: AudioFrameFeature[], threshold: number, hopDuration: number) {
+  const audibleFrames = Math.max(3, Math.ceil(DEFAULT_AUDIBLE_SECONDS / hopDuration))
+
+  for (let index = 0; index + audibleFrames <= features.length; index++) {
+    if (features[index].rms < threshold * 0.75) continue
+
+    const window = features.slice(index, index + audibleFrames)
+    const averageRms = window.reduce((total, feature) => total + feature.rms, 0) / window.length
+    const audibleRatio = window.filter((feature) => feature.rms >= threshold).length / window.length
+
+    if (averageRms >= threshold && audibleRatio >= 0.65) {
+      return Math.max(0, features[index].time - 0.04)
+    }
+  }
+
+  return null
 }
 
 function fftMagnitudes(samples: Float64Array) {
@@ -162,20 +181,33 @@ export function detectAudioStart(
   const activeRms = percentile(rmsValues, 0.78)
   const activeFlux = percentile(fluxValues, 0.65)
   const rmsThreshold = Math.max(0.008, noiseFloor * 3.2, activeRms * 0.22)
+  const audibleThreshold = Math.max(0.012, activeRms * 0.22)
   const fluxThreshold = Math.max(0.0004, activeFlux * 0.35)
   const sustainedFrames = Math.max(3, Math.ceil(sustainedSeconds / (hopSize / sampleRate)))
 
   if (options.preferEarlyStart) {
-    const earlyWindow = features.slice(0, Math.max(sustainedFrames, Math.round(2 / (hopSize / sampleRate))))
-    const earlyRms = earlyWindow.reduce((total, feature) => total + feature.rms, 0) / earlyWindow.length
-    const earlyActivityThreshold = Math.max(0.003, activeRms * 0.08)
+    const hopDuration = hopSize / sampleRate
+    const earlyFeatures = features.slice(0, Math.max(sustainedFrames, Math.round(1.25 / hopDuration)))
+    const clearEarlyThreshold = Math.max(0.012, activeRms * 0.6)
+    const lowEarlyThreshold = Math.max(0.008, activeRms * 0.18)
+    const clearEarlyStart = findAudibleStart(earlyFeatures, clearEarlyThreshold, hopDuration)
+    const lowEarlyStart = findAudibleStart(earlyFeatures, lowEarlyThreshold, hopDuration)
 
-    if (earlyRms >= earlyActivityThreshold) {
+    if (clearEarlyStart !== null) {
       return {
-        detectedAudioStartSeconds: 0,
+        detectedAudioStartSeconds: Math.round(clearEarlyStart * 100) / 100,
         confidence: 0.88,
         status: "approved",
-        reason: "Source is audio-first and has stable signal at the beginning.",
+        reason: "Source is audio-first and reaches audible level near the beginning.",
+      }
+    }
+
+    if (lowEarlyStart !== null) {
+      return {
+        detectedAudioStartSeconds: Math.round(lowEarlyStart * 100) / 100,
+        confidence: 0.86,
+        status: "approved",
+        reason: "Source is audio-first and has an audible soft intro near the beginning.",
       }
     }
   }
@@ -219,7 +251,11 @@ export function detectAudioStart(
     }
   }
 
-  const detectedAudioStartSeconds = Math.max(0, features[best.index].time - 0.12)
+  const audibleStart = findAudibleStart(features.slice(best.index), audibleThreshold, hopSize / sampleRate)
+  const detectedAudioStartSeconds =
+    audibleStart !== null
+      ? audibleStart
+      : Math.max(0, features[best.index].time - 0.04)
   const thresholdMargin = Math.min(1, Math.max(0, (features[best.index].rms - rmsThreshold) / Math.max(rmsThreshold, 0.001)))
   const confidence = Math.min(
     0.99,
