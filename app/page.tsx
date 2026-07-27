@@ -141,7 +141,7 @@ export default function LoginPage() {
               <CalendarDays className="w-7 h-7 text-[#10b981]" />
             </div>
 
-            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">5 Songs Today</span>
+            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">3 Songs Today</span>
             <h2 className="font-display text-xl font-bold text-white mb-2">Daily Challenge</h2>
             <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
               Play the same popular mix each day: USUK, VPop, and Rap.
@@ -178,36 +178,7 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          {/* Spotify / Pro Mode */}
-          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-[#10b981]/20 hover:border-[#10b981]/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5 hover:shadow-[0_0_40px_rgba(16,185,129,0.08)]">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#10b981]/3 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-            <div className="w-14 h-14 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/25 flex items-center justify-center mb-5">
-              <Music className="w-7 h-7 text-[#10b981]" />
-            </div>
-
-            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">
-              {accessToken ? "Spotify Connected" : "Spotify Login"}
-            </span>
-            <h2 className="font-display text-xl font-bold text-white mb-2">{accessToken ? "Your Playlists" : "Full Experience"}</h2>
-            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
-              Use any Spotify playlist. Audio previews stream directly. Tracks save your progress.
-            </p>
-
-            <Button
-              onClick={accessToken ? handleGuestPlay : handleSpotifyLogin}
-              disabled={initializingSpotify}
-              className="w-full h-11 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all duration-300 active:scale-[0.98]"
-            >
-              {initializingSpotify ? (
-                <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-              ) : accessToken ? (
-                "Open Playlists"
-              ) : (
-                "Connect Spotify"
-              )}
-            </Button>
-          </div>
+          {/* Spotify / Pro Mode (Temporarily Hidden) */}
 
           {/* Guest Mode */}
           <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">

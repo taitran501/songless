@@ -18,7 +18,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "fHI8X4OXluQ",
     sourceType: "official_audio",
-    lyricsSnippets: ["A city night keeps a lonely heart awake under bright signs."],
+    lyricsSnippets: ["I said, ooh, I'm blinded by the lights, No, I can't sleep until I feel your touch"],
   },
   {
     id: "usuk-shape-of-you",
@@ -27,7 +27,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "JGwWNGJdvx8",
     sourceType: "music_video",
-    lyricsSnippets: ["A dance floor meeting turns into a playful love story."],
+    lyricsSnippets: ["The club isn't the best place to find a lover, So the bar is where I go"],
   },
   {
     id: "usuk-hello",
@@ -36,7 +36,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "T1tl66trXTQ",
     sourceType: "official_audio",
-    lyricsSnippets: ["An old call carries regret across a long quiet distance."],
+    lyricsSnippets: ["Hello from the other side, I must've called a thousand times"],
   },
   {
     id: "usuk-bad-guy",
@@ -45,7 +45,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "4-TbQnONe_w",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A whispery character plays with danger and a crooked smile."],
+    lyricsSnippets: ["So you're a tough guy, Like it really rough guy, Just can't get enough guy"],
   },
   {
     id: "usuk-blank-space",
@@ -54,7 +54,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "e-ORhEE9VVg",
     sourceType: "music_video",
-    lyricsSnippets: ["A glamorous romance turns messy inside a sharp pop diary."],
+    lyricsSnippets: ["Got a long list of ex-lovers, They'll tell you I'm insane, But I've got a blank space, baby, And I'll write your name"],
   },
   {
     id: "usuk-levitating",
@@ -63,7 +63,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "WHuBW3qKm9g",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A disco sky lifts two people above the ordinary night."],
+    lyricsSnippets: ["If you wanna run away with me, I know a galaxy And I can take you for a ride"],
   },
   {
     id: "usuk-as-it-was",
@@ -72,7 +72,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "V1Z586zoeeE",
     sourceType: "official_audio",
-    lyricsSnippets: ["A bright pop memory keeps circling around change and distance."],
+    lyricsSnippets: ["In this world, it's just us, You know it's not the same as it was"],
   },
   {
     id: "usuk-uptown-funk",
@@ -81,7 +81,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "7Ya2U8XN_Zw",
     sourceType: "official_audio",
-    lyricsSnippets: ["A sharp funk groove walks into the room with full confidence."],
+    lyricsSnippets: ["Girls hit your hallelujah (whuoo), 'Cause uptown funk gon' give it to you"],
   },
   {
     id: "usuk-believer",
@@ -90,7 +90,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "IhP3J0j9JmY",
     sourceType: "official_audio",
-    lyricsSnippets: ["Pain turns into a loud arena-sized source of power."],
+    lyricsSnippets: ["Pain! You made me a, you made me a believer, believer"],
   },
   {
     id: "usuk-roar",
@@ -99,7 +99,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "mwL1cohnHNE",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A quiet voice becomes brave and impossible to ignore."],
+    lyricsSnippets: ["I got the eye of the tiger, a fighter, dancing through the fire, 'Cause I am a champion and you're gonna hear me roar"],
   },
   {
     id: "usuk-someone-like-you",
@@ -108,7 +108,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "22c3_LoIfZQ",
     sourceType: "official_audio",
-    lyricsSnippets: ["A past love is remembered with restraint and a heavy heart."],
+    lyricsSnippets: ["Never mind, I'll find someone like you, I wish nothing but the best for you, too"],
   },
   {
     id: "usuk-sunflower",
@@ -117,7 +117,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "usuk",
     videoId: "ApXoWvfEYVU",
     sourceType: "music_video",
-    lyricsSnippets: ["A warm hook floats over a sweet but unstable relationship."],
+    lyricsSnippets: ["Then you're left in the dust, unless I stuck by ya, You're the sunflower, I think your love would be too much"],
   },
   {
     id: "vpop-hay-trao-cho-anh",
@@ -126,7 +126,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "G8IlfFMt3so",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A tropical crush asks for attention with glossy summer confidence."],
+    lyricsSnippets: ["Hãy trao cho anh, hãy trao cho anh thứ tình yêu mà anh đang mong chờ"],
   },
   {
     id: "vpop-see-tinh",
@@ -135,7 +135,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "UfMEtjxzpBk",
     sourceType: "official_audio",
-    lyricsSnippets: ["A bright folk-pop flirt spins around a playful heartbeat."],
+    lyricsSnippets: ["Giây phút em gặp anh là em biết em see tình, Tình tình tình tang tang tính tang tình tình tình tang tang tang"],
   },
   {
     id: "vpop-nang-tho",
@@ -144,7 +144,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "0SJAzTGh1SE",
     sourceType: "official_audio",
-    lyricsSnippets: ["A soft memory paints someone gentle like a poem in sunlight."],
+    lyricsSnippets: ["Ta gặp nhau giữa ngày buồn bã, vì anh vội vã chắp tay... Thôi thì anh xin làm chàng thi sĩ, dệt vần thơ tặng em"],
   },
   {
     id: "vpop-co-chac-yeu-la-day",
@@ -153,7 +153,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "6t-MjBazs3o",
     sourceType: "music_video",
-    lyricsSnippets: ["A sweet question turns a crush into a colorful confession."],
+    lyricsSnippets: ["Có chắc yêu là đây, đây, đây, đây, đây, Chắc yêu là đây, đây, đây, đây, đây"],
   },
   {
     id: "vpop-buoc-qua-nhau",
@@ -162,7 +162,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "ixdSsW5n2rI",
     sourceType: "music_video",
-    lyricsSnippets: ["Two people pass each other while the city keeps moving."],
+    lyricsSnippets: ["Một chiều thu man mác hơi sương... Và mình bước qua đời nhau, để làm nhau đau"],
   },
   {
     id: "vpop-de-vuong",
@@ -171,7 +171,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "qkPgUgkQE4Y",
     sourceType: "music_video",
-    lyricsSnippets: ["A dramatic heart holds on after love becomes unfinished."],
+    lyricsSnippets: ["Một bậc quân vương mang trong con tim hình hài đất nước, Ngỡ như dân an ta sẽ chẳng bao giờ buồn"],
   },
   {
     id: "vpop-noi-nay-co-anh",
@@ -180,7 +180,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "FN7ALfpGxiI",
     sourceType: "music_video",
-    lyricsSnippets: ["A gentle promise turns love into a soft place to return to."],
+    lyricsSnippets: ["Cầm tay anh, dựa vai anh, kề bên anh nơi này có anh"],
   },
   {
     id: "vpop-lac-troi",
@@ -189,7 +189,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "WQU8avEv6CQ",
     sourceType: "lyric_video",
-    lyricsSnippets: ["An ancient-styled heartbreak drifts through a cold lonely world."],
+    lyricsSnippets: ["Người theo hương hoa mây mù giăng lối, Làn sương khói phôi phai đưa bước ai xa rồi"],
   },
   {
     id: "vpop-co-em-cho",
@@ -198,7 +198,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "PqS2YDItY3Y",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A patient love waits through ordinary days and small hopes."],
+    lyricsSnippets: ["Người đàn ông em yêu đôi khi có những phút giây yếu đuối... Ngoài kia nếu có khó khăn quá về nhà anh nhé, có em chờ"],
   },
   {
     id: "vpop-sau-tat-ca",
@@ -207,7 +207,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "XaXiLdlgMo0",
     sourceType: "official_audio",
-    lyricsSnippets: ["After every mistake, love still wants to come back home."],
+    lyricsSnippets: ["Sau tất cả mình lại trở về với nhau, Tựa như chưa bắt đầu, tựa như ta vừa mới quen"],
   },
   {
     id: "vpop-anh-nha-o-dau-the",
@@ -216,7 +216,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "aMW2Yf7PxM4",
     sourceType: "official_audio",
-    lyricsSnippets: ["A playful crush asks one simple question again and again."],
+    lyricsSnippets: ["Anh nhà ở đâu thế, Cứ tới lui trong tim tôi chẳng nhớ đường về à"],
   },
   {
     id: "vpop-co-chang-trai-viet-len-cay",
@@ -225,7 +225,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "vpop",
     videoId: "EUEUZDV-in0",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A quiet young love is written into a memory under the trees."],
+    lyricsSnippets: ["Có chàng trai viết lên cây, lời yêu thương cô gái ấy, Mối tình như gió như mây, nhiều năm trôi qua vẫn thấy"],
   },
   {
     id: "rap-see-you-again",
@@ -234,7 +234,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "xl8thVrlvjI",
     sourceType: "official_audio",
-    lyricsSnippets: ["A goodbye becomes a promise to meet beyond the road."],
+    lyricsSnippets: ["It's been a long day without you, my friend, And I'll tell you all about it when I see you again"],
   },
   {
     id: "rap-gods-plan",
@@ -243,7 +243,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "xpVfcZ0ZcFM",
     sourceType: "music_video",
-    lyricsSnippets: ["Success, pressure, and gratitude move through a calm flex."],
+    lyricsSnippets: ["God's plan, God's plan, I hold back, sometimes I won't, yuh"],
   },
   {
     id: "rap-sicko-mode",
@@ -252,7 +252,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "d-JBBNg8YKs",
     sourceType: "official_audio",
-    lyricsSnippets: ["A beat switch turns a night ride into a stadium rush."],
+    lyricsSnippets: ["Out in nature, late in the night, Sun is down, freezin' cold, That's how we already know winter's here"],
   },
   {
     id: "rap-bigcityboi",
@@ -261,7 +261,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "jgZkrA8E5do",
     sourceType: "music_video",
-    lyricsSnippets: ["A confident city character walks through nightlife with style."],
+    lyricsSnippets: ["Nghiện thuốc có thể Lào Cai, Nhưng nghiện em không thể nào cai"],
   },
   {
     id: "rap-bai-nay-chill-phet",
@@ -270,7 +270,7 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "xEXyWsgk9EY",
     sourceType: "official_audio",
-    lyricsSnippets: ["Work pressure fades into a relaxed ride with someone warm nearby."],
+    lyricsSnippets: ["Đêm nay vi vu đôi ba dặm đường, em ơi có khi ta chẳng cần giường... Bài này chill phết"],
   },
   {
     id: "rap-exs-hate-me",
@@ -279,6 +279,6 @@ export const CURATED_SONG_SEEDS: CuratedSongSeed[] = [
     genre: "rap",
     videoId: "ff7dvE-4mMA",
     sourceType: "lyric_video",
-    lyricsSnippets: ["A broken relationship becomes sharp, catchy, and hard to ignore."],
+    lyricsSnippets: ["Tất cả người yêu cũ đều ghét anh, Không một ai trong số họ muốn làm bạn"],
   },
 ]

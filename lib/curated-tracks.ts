@@ -6,8 +6,8 @@ export const GAME_MODE_STORAGE_KEY = "songless_game_mode"
 export const DAILY_DATE_STORAGE_KEY = "songless_daily_date"
 
 export const DAILY_GENRE_TARGETS: Record<TrackGenre, number> = {
-  usuk: 2,
-  vpop: 2,
+  usuk: 1,
+  vpop: 1,
   rap: 1,
 }
 

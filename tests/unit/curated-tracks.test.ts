@@ -11,8 +11,8 @@ describe("daily curated selector", () => {
     assert.equal(CURATED_TRACKS.length, 30)
   })
 
-  it("returns five tracks", () => {
-    assert.equal(selectDailyTracks("2026-06-30").length, 5)
+  it("returns three tracks", () => {
+    assert.equal(selectDailyTracks("2026-06-30").length, 3)
   })
 
   it("uses the required genre mix", () => {
@@ -25,8 +25,8 @@ describe("daily curated selector", () => {
       { usuk: 0, vpop: 0, rap: 0 }
     )
 
-    assert.equal(counts.usuk, 2)
-    assert.equal(counts.vpop, 2)
+    assert.equal(counts.usuk, 1)
+    assert.equal(counts.vpop, 1)
     assert.equal(counts.rap, 1)
   })
 

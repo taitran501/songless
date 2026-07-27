@@ -17,8 +17,11 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "SonglessUnlimited",
+  title: "SonglessUnlimited - Đoán tên bài hát",
   description: "Guess the song from short audio clips",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>"
+  }
 }
 
 export default function RootLayout({
