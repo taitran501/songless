@@ -288,66 +288,6 @@ export default function PlaylistPage() {
                       <Loader2 className="w-5 h-5 animate-spin" />
                       <span className="truncate max-w-[240px]">
                         {loadingPlaylistName ? `Loading "${loadingPlaylistName}"...` : "Fetching tracks..."}
-
-          <h1 className="font-display text-5xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent mb-3 drop-shadow-[0_0_30px_rgba(16,185,129,0.2)]">
-            Songless<span className="text-white font-light">Unlimited</span>
-          </h1>
-          <p className="text-[#9ca3af] text-sm max-w-md mx-auto leading-relaxed">
-            {hasSpotifyConnection
-              ? "Load a Spotify or YouTube playlist, listen to the clip, and name the tune."
-              : "Guest mode is active. Load a YouTube or public Spotify playlist without signing in."}
-          </p>
-        </header>
-
-        <Card className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl overflow-hidden mb-6 animate-slide-up ring-1 ring-white/5">
-          <CardHeader className="border-b border-white/5 pb-4">
-            <CardTitle className="text-white text-lg font-bold flex items-center space-x-2.5">
-              <div className="bg-[#10b981]/10 p-2 rounded-lg border border-[#10b981]/20">
-                <Music className="w-5 h-5 text-[#10b981]" />
-              </div>
-              <span className="font-display tracking-wide">CONNECT PLAYLIST</span>
-              {!hasSpotifyConnection && (
-                <span className="ml-auto font-display text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2.5 py-1 tracking-wider uppercase font-semibold">
-                  Guest
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="playlist-input" className="text-gray-300 text-sm font-medium">
-                  {hasSpotifyConnection ? "Spotify or YouTube Playlist URL or ID" : "YouTube or public Spotify Playlist URL or ID"}
-                </Label>
-                <Input
-                  id="playlist-input"
-                  type="text"
-                  placeholder="https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=..."
-                  value={playlistInput}
-                  onChange={(e) => setPlaylistInput(e.target.value)}
-                  className="bg-[#030712] border-white/10 text-white rounded-xl h-12 px-4 focus-visible:ring-[#10b981]/50 focus-visible:border-[#10b981]/50 placeholder-gray-600 transition-all"
-                  disabled={loading}
-                />
-              </div>
-              
-              {error && (
-                <div className="text-red-400 text-sm bg-red-950/20 border border-red-500/30 p-4 rounded-xl flex items-start space-x-2">
-                  <span className="font-semibold">⚠️</span>
-                  <span>{error}</span>
-                </div>
-              )}
-              
-              <div className="flex flex-col gap-3">
-                <Button
-                  type="submit"
-                  disabled={loading || !playlistInput.trim()}
-                  className="w-full bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center space-x-2">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="truncate max-w-[240px]">
-                        {loadingPlaylistName ? `Loading "${loadingPlaylistName}"...` : "Fetching tracks..."}
                       </span>
                     </span>
                   ) : (
@@ -683,10 +623,10 @@ export default function PlaylistPage() {
                 </div>
               </>
             ) : (
-              <div className="bg-[#030712]/30 p-4 rounded-xl border border-white/5 space-y-2">
-                <div className="flex items-center space-x-2 text-white">
+              <div className="bg-[#030712]/30 p-4 rounded-xl border border-[#10b981]/20 space-y-2">
+                <div className="flex items-center space-x-2 text-red-400">
                   <Music className="w-4 h-4" />
-                  <span className="font-semibold text-[10px] uppercase tracking-wider">Public Playlists</span>
+                  <span className="font-semibold text-[10px] uppercase tracking-wider">Guest Mode</span>
                 </div>
                 <h3 className="text-white font-semibold text-sm">YouTube and public Spotify playlists</h3>
                 <p className="text-gray-400 text-xs leading-relaxed">
