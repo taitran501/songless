@@ -14,9 +14,10 @@ Guess songs from tiny audio clips, challenge your friends with the same daily se
 ### Partial Lyrics Mode
 
 - Play anywhere without audio or headphones.
-- Read authentic lyric snippets from popular songs while title and artist stay hidden.
-- Each song includes multiple distinct lyric clues for a varied replay experience.
-- Each wrong guess reveals a little more, with six chances to find the answer.
+- Each Quick Mix contains exactly 5 songs with a deterministic `2–2–1` genre balance.
+- Recent songs are avoided when the catalog allows it, and replay creates a new order and clue selection.
+- Each wrong guess reveals a deterministic superset of the previous clue.
+- The final clue reveals every non-title word plus the artist and genre; the title stays hidden until the answer is shown.
 
 ### Guest Playlist Mode
 
@@ -46,9 +47,12 @@ Audio modes use six clip stages:
 2. Enter a guess and choose a matching suggestion.
 3. A wrong guess or skip unlocks the next stage and lowers the available score.
 4. A correct guess reveals the result and advances to the next song.
-5. Missing all six stages reveals the answer with no points.
+5. In Lyrics mode, the sixth stage becomes the final clue and `Give up & reveal answer` ends the round with no points.
 
 Your progress and score are saved automatically in the browser, so an interrupted game can be continued later.
+Starting a new Lyrics Quick Mix remembers up to 10 recent tracks locally. Genre best scores and streaks also remain on the current device.
+
+Game exits are mode-aware: Daily, Lyrics, and Genre return home, while custom playlists return to Playlist Setup. Leaving a run after making progress asks for confirmation before clearing it.
 
 ## Adding Daily Songs
 
@@ -140,8 +144,10 @@ lib/
   curated-tracks.ts         Runtime merge and deterministic daily selection
   audio-start-detector.ts   Audio feature extraction and start detector
   game-session.ts           Session v2 validation and legacy migration
+  game-navigation.ts        Mode-aware exit labels, routes, and progress checks
   genre-progress.ts         Five-track genre runs and local progression
   lyrics-clues.ts           Title/artist masking and staged clue reveal
+  lyrics-runs.ts            Five-track Lyrics Quick Mix and recent-track history
   youtube.ts                Playlist parsing and verified fallback matching
 scripts/
   analyze-audio-start.ts    Local yt-dlp/ffmpeg ingest workflow
