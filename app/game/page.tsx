@@ -24,6 +24,12 @@ import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
 import { useToast } from "@/hooks/use-toast"
 import {
+  completeDailyRun,
+  EMPTY_DAILY_PROGRESS,
+  readDailyProgress,
+  type DailyProgressState,
+} from "@/lib/daily-progress"
+import {
   createRunId,
   isGenreSession,
   readGameSession,
@@ -175,6 +181,8 @@ export default function GamePage() {
   const [session, setSession] = useState<GameSessionMeta | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [genreProgress, setGenreProgress] = useState<GenreProgressRecord>(EMPTY_GENRE_PROGRESS)
+  const [dailyProgress, setDailyProgress] =
+    useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const gameMode: GameMode = session?.playbackMode ?? "audio"
   const dailyDate = session?.dateKey ?? null
@@ -215,6 +223,9 @@ export default function GamePage() {
     setSession(nextSession)
     if (isGenreSession(nextSession)) {
       setGenreProgress(readGenreProgress(localStorage, nextSession.genre))
+    }
+    if (nextSession?.kind === "daily") {
+      setDailyProgress(readDailyProgress(localStorage))
     }
     setSessionLoaded(true)
   }, [])
@@ -437,6 +448,17 @@ export default function GamePage() {
           })
         )
       }
+      if (session?.kind === "daily" && session.dateKey) {
+        setDailyProgress(
+          completeDailyRun(localStorage, {
+            dateKey: session.dateKey,
+            score,
+            solved: correctCount,
+            results: trackResults,
+            runId: session.runId,
+          })
+        )
+      }
       setPlaylistComplete(true)
     }, 220)
   }
@@ -613,6 +635,19 @@ export default function GamePage() {
                 <div className="bg-cyan-400/[0.06] border border-cyan-300/15 rounded-xl p-4 text-center">
                   <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-semibold">Best Score</p>
                   <p className="text-2xl font-extrabold text-white">{genreProgress.bestScore}</p>
+                </div>
+              </>
+            )}
+
+            {session?.kind === "daily" && (
+              <>
+                <div className="bg-amber-300/[0.06] border border-amber-200/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-amber-200 uppercase tracking-wide font-semibold">Daily Streak</p>
+                  <p className="text-2xl font-extrabold text-white">{dailyProgress.currentStreak}</p>
+                </div>
+                <div className="bg-amber-300/[0.06] border border-amber-200/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-amber-200 uppercase tracking-wide font-semibold">Best Streak</p>
+                  <p className="text-2xl font-extrabold text-white">{dailyProgress.bestStreak}</p>
                 </div>
               </>
             )}

@@ -14,6 +14,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { useTracks } from "@/hooks/tracks-store"
 import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
+import {
+  EMPTY_DAILY_PROGRESS,
+  getRecentDailyDays,
+  readDailyProgress,
+  type DailyProgressState,
+} from "@/lib/daily-progress"
 import { createGameSession, writeGameSession } from "@/lib/game-session"
 import {
   EMPTY_GENRE_PROGRESS,
@@ -47,6 +53,12 @@ export default function HomePage() {
   const { setTracks } = useTracks()
   const [genreProgress, setGenreProgress] =
     useState<Record<TrackGenre, GenreProgressRecord>>(emptyGenreProgress)
+  const [dailyProgress, setDailyProgress] =
+    useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
+  const todayDateKey = getUtcDateKey()
+  const todayDailyRecord =
+    dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
+  const recentDailyDays = getRecentDailyDays(todayDateKey, dailyProgress)
 
   useEffect(() => {
     setGenreProgress(
@@ -54,6 +66,7 @@ export default function HomePage() {
         GENRES.map((genre) => [genre, readGenreProgress(localStorage, genre)])
       ) as Record<TrackGenre, GenreProgressRecord>
     )
+    setDailyProgress(readDailyProgress(localStorage))
   }, [])
 
   const handleGuestPlay = () => router.push("/playlist")
@@ -140,7 +153,7 @@ export default function HomePage() {
           className="group relative mb-5 overflow-hidden rounded-3xl border border-[#10b981]/30 bg-[#08121a]/85 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] ring-1 ring-white/5 transition-colors hover:border-[#34d399]/55 sm:p-8"
         >
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/10 via-transparent to-indigo-500/[0.06]" />
-          <div className="relative grid items-center gap-7 md:grid-cols-[1fr_240px] lg:grid-cols-[1fr_300px]">
+          <div className="relative grid items-center gap-7 md:grid-cols-[1fr_300px]">
             <div className="flex items-start gap-4 sm:gap-5">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#10b981]/30 bg-[#10b981]/12 sm:h-14 sm:w-14">
                 <CalendarDays className="h-6 w-6 text-[#34d399] sm:h-7 sm:w-7" />
@@ -159,19 +172,67 @@ export default function HomePage() {
                   onClick={startDailyChallenge}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
-                  Start Today&apos;s Challenge
+                  {todayDailyRecord ? "Play Again" : "Start Today\u2019s Challenge"}
                 </Button>
               </div>
             </div>
 
-            <div aria-hidden="true" className="hidden h-28 items-end justify-center gap-2 rounded-2xl border border-white/10 bg-[#030712]/45 px-5 py-5 md:flex">
-              {EQUALIZER_HEIGHTS.map((height, index) => (
-                <span
-                  key={`${height}-${index}`}
-                  className="w-2 rounded-full bg-gradient-to-t from-[#059669] to-[#6ee7b7] opacity-80 transition-all duration-300 group-hover:opacity-100"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
+            <div className="rounded-2xl border border-white/10 bg-[#030712]/45 p-4">
+              <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Current</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-display text-lg font-bold text-white">
+                    <Flame className="h-4 w-4 text-orange-300" />
+                    {dailyProgress.currentStreak}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Best</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-display text-lg font-bold text-white">
+                    <Trophy className="h-4 w-4 text-amber-300" />
+                    {dailyProgress.bestStreak}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Today</p>
+                  <p className="mt-1 font-display text-lg font-bold text-white">
+                    {todayDailyRecord ? todayDailyRecord.bestScore : "—"}
+                  </p>
+                </div>
+              </div>
+              <div data-testid="daily-week" className="grid grid-cols-7 gap-1.5">
+                {recentDailyDays.map(({ dateKey, record }) => (
+                  <div key={dateKey} className="text-center">
+                    <span className="block text-[9px] font-semibold uppercase text-[#697386]">
+                      {new Date(`${dateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
+                        weekday: "narrow",
+                        timeZone: "UTC",
+                      })}
+                    </span>
+                    <span
+                      className={`mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        record
+                          ? "border-[#10b981]/50 bg-[#10b981]/20 text-[#6ee7b7]"
+                          : dateKey === todayDateKey
+                            ? "border-white/25 bg-white/[0.05] text-white"
+                            : "border-white/10 text-[#4b5563]"
+                      }`}
+                      title={record ? `${record.bestScore} points` : "Not completed"}
+                    >
+                      {record ? "✓" : "·"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div aria-hidden="true" className="mt-4 hidden h-8 items-end justify-center gap-1.5 md:flex">
+                {EQUALIZER_HEIGHTS.map((height, index) => (
+                  <span
+                    key={`${height}-${index}`}
+                    className="w-1.5 rounded-full bg-gradient-to-t from-[#059669] to-[#6ee7b7] opacity-60 transition-all duration-300 group-hover:opacity-100"
+                    style={{ height: `${Math.max(20, height)}%` }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </section>
