@@ -1,10 +1,13 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
+  analyzeLyricsSnippetQuality,
   buildLyricsClue,
+  getEligibleLyricsSnippetIndices,
   maskTitleAndArtistWords,
   selectLyricsSnippetIndex,
 } from "@/lib/lyrics-clues"
+import { CURATED_TRACKS } from "@/lib/curated-tracks"
 import type { GameTrack } from "@/lib/tracks"
 
 const track: GameTrack = {
@@ -20,6 +23,24 @@ const track: GameTrack = {
 }
 
 describe("lyrics clues", () => {
+  it("keeps at least one quality-gated snippet for every curated track", () => {
+    for (const curatedTrack of CURATED_TRACKS) {
+      const eligibleIndices = getEligibleLyricsSnippetIndices(curatedTrack)
+      assert.ok(
+        eligibleIndices.length > 0,
+        `${curatedTrack.challengeId} has no eligible lyric snippet`
+      )
+      for (const index of eligibleIndices) {
+        const quality = analyzeLyricsSnippetQuality(
+          curatedTrack,
+          curatedTrack.lyricsSnippets![index]
+        )
+        assert.ok(quality.visibleWordCount >= 8)
+        assert.ok(quality.visibleCharacterRatio >= 0.6)
+      }
+    }
+  })
+
   it("masks title and artist words", () => {
     const masked = maskTitleAndArtistWords(track.lyricsSnippets![0], track).toLowerCase()
 
@@ -30,11 +51,20 @@ describe("lyrics clues", () => {
   })
 
   it("reveals more text as stages advance", () => {
-    const early = buildLyricsClue(track, 0)
-    const late = buildLyricsClue(track, 5)
+    const clues = Array.from({ length: 6 }, (_, stage) => buildLyricsClue(track, stage))
+    const visiblePositions = clues.map((clue) =>
+      clue
+        .split(/\s+/)
+        .map((word, index) => (/[A-Za-z\u00C0-\u1EF9]/.test(word) ? index : -1))
+        .filter((index) => index >= 0)
+    )
 
-    assert.ok(early.includes("----"))
-    assert.equal(late.includes("----"), false)
+    for (let stage = 1; stage < visiblePositions.length; stage++) {
+      assert.ok(
+        visiblePositions[stage - 1].every((index) => visiblePositions[stage].includes(index))
+      )
+    }
+    assert.equal(buildLyricsClue(track, 3), buildLyricsClue(track, 3))
   })
 
   it("keeps short clues partially hidden until the final stage", () => {
