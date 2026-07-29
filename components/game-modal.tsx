@@ -19,6 +19,7 @@ interface GameModalProps {
   track: GameTrack | null
   onNext: () => void
   onBack?: () => void
+  backLabel?: string
   guesses: string[]
   trackIndex: number
   pointsEarned?: number
@@ -35,6 +36,7 @@ export function GameModal({
   track,
   onNext,
   onBack,
+  backLabel = "Back to Playlist Setup",
   guesses = [],
   trackIndex,
   pointsEarned = 0,
@@ -159,7 +161,7 @@ export function GameModal({
               onClick={onBack}
               className="w-full text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center"
             >
-              Back to Playlists
+              {backLabel}
             </button>
           )}
         </div>

@@ -4,6 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Trophy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { GameModal } from "@/components/game-modal"
 import { GuessPanel, type GuessSuggestion } from "@/components/game/guess-panel"
 import { LyricsCluePanel } from "@/components/game/lyrics-clue-panel"
@@ -28,6 +38,7 @@ import {
   type GenreProgressRecord,
 } from "@/lib/genre-progress"
 import { isCorrectGuess } from "@/lib/guessing"
+import { getGameNavigation, hasGameProgress } from "@/lib/game-navigation"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
 import {
   getLyricsTrackId,
@@ -160,6 +171,7 @@ export default function GamePage() {
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
   const [playlistComplete, setPlaylistComplete] = useState(false)
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
   const [session, setSession] = useState<GameSessionMeta | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
   const [genreProgress, setGenreProgress] = useState<GenreProgressRecord>(EMPTY_GENRE_PROGRESS)
@@ -189,6 +201,7 @@ export default function GamePage() {
   } = useGameState({ tracks, tracksLoading, session })
 
   const currentTrack = tracks[currentIndex]
+  const navigation = getGameNavigation(session)
 
   const playback = useAudioPlayback({
     currentTrack: isLyricsMode ? undefined : currentTrack,
@@ -427,16 +440,32 @@ export default function GamePage() {
     }, 220)
   }
 
-  const handleExitPlaylist = () => {
+  const exitRun = () => {
     playback.resetPlayback()
     clearSavedGame(session)
-    router.push("/playlist")
+    router.push(navigation.exitRoute)
   }
 
-  const handleBackHome = () => {
+  const requestExitRun = () => {
+    if (
+      hasGameProgress({
+        currentIndex,
+        currentStage,
+        guesses,
+        score,
+        correctCount,
+      })
+    ) {
+      setShowExitConfirm(true)
+      return
+    }
+    exitRun()
+  }
+
+  const handleSummaryExit = () => {
     playback.resetPlayback()
     clearSavedGame(session)
-    router.push("/")
+    router.push(navigation.secondaryRoute)
   }
 
   const handleReplayPlaylist = async () => {
@@ -468,7 +497,7 @@ export default function GamePage() {
   const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
     clearSavedGame(session)
-    router.push(isGenreSession(session) ? "/" : "/playlist")
+    router.push(navigation.secondaryRoute)
   }
 
   const handlePlay = async () => {
@@ -529,9 +558,9 @@ export default function GamePage() {
       >
         <div className="w-full max-w-xl bg-[#090d16]/70 border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl ring-1 ring-white/5">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <Button onClick={handleBackHome} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white">
+            <Button onClick={handleSummaryExit} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white">
               <ArrowLeft className="w-4 h-4 mr-1.5" />
-              Home
+              {navigation.secondaryLabel}
             </Button>
             <div className="rounded-full border border-[#10b981]/30 bg-[#10b981]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#10b981]">
               Mode: {completeModeLabel}
@@ -612,10 +641,10 @@ export default function GamePage() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
               <RotateCcw className="w-4 h-4 mr-2" />
-              {isLyricsMode ? "PLAY ANOTHER 5" : isGenreSession(session) ? "REPLAY GENRE" : "REPLAY PLAYLIST"}
+              {navigation.replayLabel}
             </Button>
             <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
-              {isGenreSession(session) ? "CHOOSE ANOTHER" : "LOAD ANOTHER"}
+              {navigation.secondaryLabel}
             </Button>
           </div>
         </div>
@@ -673,10 +702,6 @@ export default function GamePage() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={handleBackHome} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#dce5d9] hover:bg-white/5 hover:text-white">
-                <ArrowLeft className="w-4 h-4 mr-1.5" />
-                Home
-              </Button>
               <h1 className="font-display text-3xl font-extrabold tracking-tight bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">
                 Songless<span className="text-white font-light">Unlimited</span>
               </h1>
@@ -690,8 +715,8 @@ export default function GamePage() {
               </span>
             </div>
           </div>
-          <Button onClick={handleExitPlaylist} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#9ca3af] hover:bg-white/5 hover:text-white sm:mt-1">
-            <X className="w-4 h-4 mr-1.5" /> Exit to Playlist
+          <Button onClick={requestExitRun} variant="outline" size="sm" className="bg-transparent border-white/10 text-[#9ca3af] hover:bg-white/5 hover:text-white sm:mt-1">
+            <X className="w-4 h-4 mr-1.5" /> {navigation.exitLabel}
           </Button>
         </div>
 
@@ -761,8 +786,9 @@ export default function GamePage() {
           onNext={handleNextSong}
           onBack={() => {
             setShowModal(false)
-            router.push("/playlist")
+            requestExitRun()
           }}
+          backLabel={navigation.exitLabel}
           guesses={modalContent.guesses}
           trackIndex={modalContent.trackIndex}
           pointsEarned={modalContent.pointsEarned}
@@ -771,6 +797,28 @@ export default function GamePage() {
           dailyDate={dailyDate}
           score={score}
         />
+
+        <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+          <AlertDialogContent className="border-white/10 bg-[#090d16] text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Exit and discard this run?</AlertDialogTitle>
+              <AlertDialogDescription className="text-[#9ca3af]">
+                Your current guesses, score, and track progress will be cleared.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5 hover:text-white">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={exitRun}
+                className="bg-[#ef4444] text-white hover:bg-[#dc2626]"
+              >
+                Exit and discard
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   )
