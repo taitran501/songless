@@ -296,7 +296,7 @@ export default function HomePage() {
                   onClick={() => requestNewRun(startDailyChallenge)}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
-                  {todayDailyRecord ? "Play Again" : "Start Today\u2019s Challenge"}
+                  {todayDailyRecord ? "Play Again" : "Start Today's Challenge"}
                 </Button>
               </div>
             </div>
