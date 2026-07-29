@@ -7,9 +7,10 @@ import type { GameTrack } from "@/lib/tracks"
 interface LyricsCluePanelProps {
   track: GameTrack
   currentStage: number
+  snippetIndex?: number
 }
 
-export function LyricsCluePanel({ track, currentStage }: LyricsCluePanelProps) {
+export function LyricsCluePanel({ track, currentStage, snippetIndex = 0 }: LyricsCluePanelProps) {
   return (
     <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
       <div className="flex items-center gap-3 mb-4">
@@ -22,8 +23,8 @@ export function LyricsCluePanel({ track, currentStage }: LyricsCluePanelProps) {
         </div>
       </div>
 
-      <p className="text-xl sm:text-2xl leading-relaxed text-white font-semibold">
-        {buildLyricsClue(track, currentStage)}
+      <p data-testid="lyrics-clue" className="text-xl sm:text-2xl leading-relaxed text-white font-semibold">
+        {buildLyricsClue(track, currentStage, snippetIndex)}
       </p>
       <p className="text-xs text-[#6b7280] mt-4">
         Title and artist words are hidden. Each wrong guess reveals more of the clue.

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { parseYouTubePlaylistHtml, parseYouTubeSearchHtml } from "@/lib/youtube"
+import {
+  parseYouTubePlaylistHtml,
+  parseYouTubeSearchHtml,
+  resolveYouTubeAudioSourceFromSuggestions,
+} from "@/lib/youtube"
 
 const html = `
 <html><script>
@@ -104,5 +108,66 @@ describe("YouTube parser", () => {
     assert.equal(suggestion.uri, "youtube:6uVJqD2hSGQ")
     assert.equal(suggestion.name, "Em")
     assert.equal(suggestion.artists, "Binz")
+  })
+
+  it("prefers a verified official source", () => {
+    const match = resolveYouTubeAudioSourceFromSuggestions(
+      { title: "Em", artists: "Binz" },
+      [
+        {
+          videoId: "cover123456",
+          uri: "youtube:cover123456",
+          name: "Em",
+          artists: "Random Singer",
+          albumImage: null,
+          rawTitle: "Em - Binz cover by Random Singer",
+        },
+        {
+          videoId: "official123",
+          uri: "youtube:official123",
+          name: "Em",
+          artists: "Binz",
+          albumImage: null,
+          rawTitle: "Binz - Em (Official Audio)",
+        },
+      ]
+    )
+
+    assert.equal(match?.videoId, "official123")
+    assert.ok((match?.matchScore || 0) > 100)
+  })
+
+  it("rejects live, remix, cover and artist mismatches", () => {
+    const match = resolveYouTubeAudioSourceFromSuggestions(
+      { title: "Em", artists: "Binz" },
+      [
+        {
+          videoId: "live1234567",
+          uri: "youtube:live1234567",
+          name: "Em",
+          artists: "Binz",
+          albumImage: null,
+          rawTitle: "Binz - Em live",
+        },
+        {
+          videoId: "remix12345",
+          uri: "youtube:remix12345",
+          name: "Em",
+          artists: "Binz",
+          albumImage: null,
+          rawTitle: "Binz - Em remix",
+        },
+        {
+          videoId: "wrong123456",
+          uri: "youtube:wrong123456",
+          name: "Em",
+          artists: "Different Artist",
+          albumImage: null,
+          rawTitle: "Different Artist - Em official audio",
+        },
+      ]
+    )
+
+    assert.equal(match, null)
   })
 })

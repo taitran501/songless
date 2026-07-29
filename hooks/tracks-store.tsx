@@ -24,10 +24,14 @@ export function TracksProvider({ children }: { children: ReactNode }) {
       if (savedTracks) {
         const parsedTracks = JSON.parse(savedTracks)
         const validTracks = normalizeTracks(parsedTracks)
+        if (validTracks.length === 0) {
+          localStorage.removeItem("game_tracks")
+        }
         setTracksState(validTracks)
       }
     } catch (error) {
       console.error("Could not load saved tracks:", error)
+      localStorage.removeItem("game_tracks")
     } finally {
       setIsLoading(false)
     }

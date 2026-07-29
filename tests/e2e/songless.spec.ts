@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 const mockTracks = [
   {
@@ -53,6 +53,24 @@ const mockSpotifyNoPreviewTracks = [
   },
 ]
 
+const mockLyricsTrack = {
+  source: "youtube",
+  uri: "youtube:lyrics-test",
+  videoId: "lyrics-test",
+  name: "Hidden Answer",
+  artists: "Secret Singer",
+  duration_ms: 180000,
+  albumImage: null,
+  preview_url: null,
+  genre: "vpop",
+  challengeId: "lyrics-test",
+  lyricsSnippets: [
+    "Morning windows glow while quiet streets awaken",
+    "Silver rivers carry every distant promise",
+    "Paper lanterns drift beneath a violet skyline",
+  ],
+}
+
 async function seedStorage(page: Page, values: Record<string, string>) {
   await page.addInitScript((entries) => {
     for (const [key, value] of Object.entries(entries)) {
@@ -61,63 +79,18 @@ async function seedStorage(page: Page, values: Record<string, string>) {
   }, values)
 }
 
-async function mockSpotifyDevices(page: Page, status = 200) {
-  await page.route("https://api.spotify.com/v1/me/player/devices", async (route) => {
-    await route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify({ devices: [] }),
+async function mockClipboard(page: Page, shouldReject = false) {
+  await page.addInitScript((rejectWrite) => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        async writeText(value: string) {
+          if (rejectWrite) throw new Error("clipboard blocked")
+          ;(window as any).__copiedShareText = value
+        },
+      },
     })
-  })
-}
-
-async function mockSpotifySdk(page: Page) {
-  await page.route("https://sdk.scdn.co/spotify-player.js", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/javascript",
-      body: `
-        (() => {
-          class MockPlayer {
-            constructor(config) {
-              this.config = config;
-              this.listeners = {};
-            }
-            addListener(event, callback) {
-              this.listeners[event] = callback;
-            }
-            connect() {
-              setTimeout(() => {
-                if (this.listeners.ready) {
-                  this.listeners.ready({ device_id: "test-device-id" });
-                }
-              }, 0);
-              return Promise.resolve(true);
-            }
-            disconnect() {
-              return undefined;
-            }
-            pause() {
-              return Promise.resolve();
-            }
-            resume() {
-              return Promise.resolve();
-            }
-            getCurrentState() {
-              return Promise.resolve({});
-            }
-          }
-
-          window.Spotify = { Player: MockPlayer };
-          setTimeout(() => {
-            if (window.onSpotifyWebPlaybackSDKReady) {
-              window.onSpotifyWebPlaybackSDKReady();
-            }
-          }, 0);
-        })();
-      `,
-    })
-  })
+  }, shouldReject)
 }
 
 async function mockHtmlAudio(page: Page) {
@@ -247,98 +220,6 @@ async function mockSeekSensitiveYouTubeIframe(page: Page) {
   })
 }
 
-async function mockPremiumPlayback(page: Page) {
-  await page.route(/https:\/\/api\.spotify\.com\/v1\/me\/player$/, async (route: Route) => {
-    const method = route.request().method()
-
-    if (method === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ device: { id: "test-device-id" } }),
-      })
-      return
-    }
-
-    await route.fulfill({
-      status: 204,
-      body: "",
-    })
-  })
-
-  await page.route(/https:\/\/api\.spotify\.com\/v1\/me\/player\/play\?device_id=.*/, async (route) => {
-    await route.fulfill({
-      status: 204,
-      body: "",
-    })
-  })
-}
-
-test("shows a configuration error when Spotify config is missing", async ({ page }) => {
-  await page.route("**/api/spotify/config", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        clientId: "",
-        redirectUri: "http://127.0.0.1:3100/callback",
-        scopes: "streaming",
-      }),
-    })
-  })
-
-  await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify" }).click()
-
-  await expect(page.getByText("Configuration Error")).toBeVisible()
-  await expect(page.getByText("SPOTIFY_CLIENT_ID environment variable is not set")).toBeVisible()
-})
-
-test("redirects to Spotify authorize with the callback page redirect URI", async ({ page }) => {
-  await page.route("**/api/spotify/config", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        clientId: "test-client-id",
-        redirectUri: "http://127.0.0.1:3100/callback",
-        scopes: "streaming user-read-email",
-      }),
-    })
-  })
-
-  await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify" }).click()
-
-  await page.waitForURL(/https:\/\/accounts\.spotify\.com\//)
-  const redirectUrl = decodeURIComponent(page.url())
-  expect(redirectUrl).toContain("redirect_uri=http%3A%2F%2F127.0.0.1%3A3100%2Fcallback")
-})
-
-test("stores tokens and lands on playlist after a successful callback exchange", async ({ page }) => {
-  await mockSpotifyDevices(page)
-
-  await page.route("**/api/spotify/callback", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        access_token: "new-access-token",
-        refresh_token: "new-refresh-token",
-        expires_in: 3600,
-      }),
-    })
-  })
-
-  await page.goto("/callback?code=test-code")
-
-  await page.waitForURL("**/playlist")
-  await expect(page.getByText(/connect playlist/i)).toBeVisible()
-
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBe("new-access-token")
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_refresh_token"))).toBe("new-refresh-token")
-})
-
 test("allows unauthenticated users to access the playlist page as guest", async ({ page }) => {
   await page.goto("/playlist")
 
@@ -346,14 +227,6 @@ test("allows unauthenticated users to access the playlist page as guest", async 
 })
 
 test("loads playlist tracks and enables the start-game state", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
     await route.fulfill({
       status: 200,
@@ -372,24 +245,6 @@ test("loads playlist tracks and enables the start-game state", async ({ page }) 
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
 })
 
-test("lets a connected user fall back to guest mode", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-  await page.goto("/playlist")
-
-  await expect(page.getByRole("button", { name: "Use Guest Mode" })).toBeVisible()
-  await page.getByRole("button", { name: "Use Guest Mode" }).click()
-
-  await expect(page.getByText("Guest mode is active")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Connect Spotify" })).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBeNull()
-})
-
 test("shows playlist mode and lets the user return home", async ({ page }) => {
   await page.goto("/playlist")
 
@@ -401,14 +256,6 @@ test("shows playlist mode and lets the user return home", async ({ page }) => {
 })
 
 test("loads YouTube playlist tracks and enables the start-game state", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({
       status: 200,
@@ -462,22 +309,37 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   await expect(page.getByText("2 / 6")).toBeVisible()
 })
 
-test("starts the daily challenge as a five-track audio game", async ({ page }) => {
+test("starts the daily challenge as a three-track audio game", async ({ page }) => {
   await mockYouTubeIframe(page)
 
   await page.goto("/")
   await page.getByRole("button", { name: "Start Daily Challenge" }).click()
 
-  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Track 1 of 3")).toBeVisible()
   await expect(page.getByText("Mode: Daily Challenge")).toBeVisible()
   await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByLabel("Play preview")).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("current_playlist_id"))).toMatch(/^daily-audio-\d{4}-\d{2}-\d{2}$/)
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("audio")
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.kind === "daily" &&
+        session?.playbackMode === "audio" &&
+        /^daily-audio-\d{4}-\d{2}-\d{2}$/.test(session?.id || "")
+    })
+  }).toBe(true)
   await expect.poll(async () => {
     return page.evaluate(() => {
       const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
-      return tracks.length === 5 && tracks.every((track: any) => track.audioAnalysisStatus === "approved" && typeof track.audioStartSeconds === "number")
+      const genres = tracks.map((track: any) => track.genre).sort()
+      return (
+        tracks.length === 3 &&
+        genres.join(",") === "rap,usuk,vpop" &&
+        tracks.every(
+          (track: any) =>
+            track.audioAnalysisStatus === "approved" &&
+            typeof track.audioStartSeconds === "number"
+        )
+      )
     })
   }).toBe(true)
 })
@@ -487,16 +349,76 @@ test("keeps daily challenge progress in a daily-specific state key", async ({ pa
 
   await page.goto("/")
   await page.getByRole("button", { name: "Start Daily Challenge" }).click()
-  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Track 1 of 3")).toBeVisible()
 
   await page.getByRole("button", { name: /SKIP/ }).click()
 
   await expect.poll(async () => {
     return page.evaluate(() => {
-      const playlistId = window.localStorage.getItem("current_playlist_id")
-      return playlistId ? window.localStorage.getItem(`songless_state_${playlistId}`) : null
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.runId ? window.localStorage.getItem(`songless_state_${session.runId}`) : null
     })
   }).toContain('"currentStage":1')
+})
+
+test("runs five genre tracks and persists local progression", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "VPop" }).click()
+
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  const firstRun = await page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+    return {
+      runId: session?.runId,
+      kind: session?.kind,
+      genre: session?.genre,
+      uris: tracks.map((track: any) => track.uri),
+      tracks,
+    }
+  })
+
+  expect(firstRun.kind).toBe("genre")
+  expect(firstRun.genre).toBe("vpop")
+  expect(firstRun.uris).toHaveLength(5)
+  expect(new Set(firstRun.uris).size).toBe(5)
+  expect(firstRun.tracks.every((track: any) => track.genre === "vpop")).toBe(true)
+
+  for (let index = 0; index < firstRun.tracks.length; index++) {
+    await page.getByPlaceholder("Know the song? Search artist or title...").fill(firstRun.tracks[index].name)
+    await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+    await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+    await page.getByRole("button", { name: index === 4 ? "VIEW SUMMARY" : "NEXT SONG" }).click()
+  }
+
+  await expect(page.getByText("Genre Practice Complete")).toBeVisible()
+  await expect(page.getByText("Run Streak").locator("..").getByText("5")).toBeVisible()
+  await expect(page.getByText("Best Score").locator("..").getByText("500")).toBeVisible()
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem("songless_genre_progress_v1") || "{}")
+      return store["audio:vpop"]
+    })
+  }).toEqual({
+    bestStreak: 5,
+    bestScore: 500,
+    completedRuns: 1,
+    totalSolved: 5,
+  })
+
+  await page.getByRole("button", { name: "REPLAY GENRE" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+      return {
+        runId: session?.runId,
+        uris: tracks.map((track: any) => track.uri),
+      }
+    })
+  }).not.toEqual({ runId: firstRun.runId, uris: firstRun.uris })
 })
 
 test("plays partial lyrics mode without audio controls", async ({ page }) => {
@@ -508,7 +430,12 @@ test("plays partial lyrics mode without audio controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByText("Track 1 of")).toBeVisible()
   await expect(page.getByLabel("Play preview")).toHaveCount(0)
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("lyrics")
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.kind === "lyrics" && session?.playbackMode === "lyrics"
+    })
+  }).toBe(true)
 })
 
 test("reveals another lyrics clue after a wrong guess", async ({ page }) => {
@@ -533,12 +460,76 @@ test("accepts a correct partial lyrics guess", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
 })
 
+test("keeps a lyrics clue on refresh and rotates it on replay", async ({ page }) => {
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-e2e",
+      runId: "lyrics-run-1",
+    }),
+  })
+
+  await page.goto("/game")
+  const firstClue = await page.getByTestId("lyrics-clue").innerText()
+  await page.reload()
+  await expect(page.getByTestId("lyrics-clue")).toHaveText(firstClue)
+
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
+  await expect(page.getByText("Lyrics Complete")).toBeVisible()
+  await page.getByRole("button", { name: "REPLAY PLAYLIST" }).click()
+
+  await expect(page.getByTestId("lyrics-clue")).not.toHaveText(firstClue)
+})
+
+test("reports share success only after clipboard resolves", async ({ page }) => {
+  await mockClipboard(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-share-success",
+      runId: "lyrics-share-success-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "SHARE RESULTS" }).click()
+
+  await expect(page.getByText("Copied to clipboard!")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => (window as any).__copiedShareText)).toContain("http://127.0.0.1:3100")
+})
+
+test("reports share failure when clipboard rejects", async ({ page }) => {
+  await mockClipboard(page, true)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-share-failure",
+      runId: "lyrics-share-failure-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "SHARE RESULTS" }).click()
+
+  await expect(page.getByText("Copy failed", { exact: true })).toBeVisible()
+  await expect(page.getByText("Copied to clipboard!")).toHaveCount(0)
+})
+
 test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
   await mockHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
 
@@ -554,9 +545,6 @@ test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
 test("shows an audio error when Spotify preview playback fails", async ({ page }) => {
   await mockBrokenHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
 
@@ -624,17 +612,14 @@ test("starts YouTube playback from the configured audio start point", async ({ p
 
 test("shows an audio error when YouTube fallback search fails", async ({ page }) => {
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
-  await page.route("**/api/youtube/search?q=*", async (route) => {
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
     await route.fulfill({
       status: 404,
       contentType: "application/json",
-      body: JSON.stringify({ error: "No YouTube video was found." }),
+      body: JSON.stringify({ error: "No verified YouTube audio source was found for this track." }),
     })
   })
 
@@ -648,17 +633,19 @@ test("shows an audio error when YouTube fallback search fails", async ({ page })
 test("falls back from Spotify no-preview tracks to YouTube playback", async ({ page }) => {
   await mockYouTubeIframe(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
-  await page.route("**/api/youtube/search?q=*", async (route) => {
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ videoId: "6uVJqD2hSGQ" }),
+      body: JSON.stringify({
+        videoId: "6uVJqD2hSGQ",
+        matchedTitle: "No Preview Song",
+        matchedArtists: "Fallback Artist",
+        matchScore: 140,
+      }),
     })
   })
 
@@ -762,14 +749,6 @@ test("accepts a selected YouTube search suggestion in guest mode", async ({ page
 })
 
 test("shows error when YouTube playlist fails to load", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({
       status: 404,
@@ -787,31 +766,17 @@ test("shows error when YouTube playlist fails to load", async ({ page }) => {
 })
 
 test("redirects the game page back to playlist when no tracks are loaded", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-  await mockPremiumPlayback(page)
-
   await page.goto("/game")
 
   await page.waitForURL("**/playlist")
   await expect(page.getByText(/connect playlist/i)).toBeVisible()
 })
 
-test("supports the main game controls with mocked Spotify playback", async ({ page }) => {
+test("supports the main game controls with mocked audio playback", async ({ page }) => {
+  await mockHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
-
-  await mockSpotifySdk(page)
-  await mockPremiumPlayback(page)
 
   await page.goto("/game")
 

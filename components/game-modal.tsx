@@ -4,6 +4,12 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Share2, SkipForward, Music } from "lucide-react"
+import {
+  buildEmojiGrid,
+  buildShareText,
+  copyShareText,
+  resolveShareUrl,
+} from "@/lib/sharing"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 interface GameModalProps {
@@ -39,37 +45,21 @@ export function GameModal({
 }: GameModalProps) {
   const { toast } = useToast()
 
-  const generateEmojiGrid = () => {
-    const grid: string[] = guesses.map((g, i) => {
-      if (correct && i === guesses.length - 1) {
-        return "🟩"
-      } else if (g === "SKIPPED") {
-        return "⬜"
-      } else {
-        return "🟥"
-      }
-    })
-    
-    // Fill remaining with unplayed blocks
-    while (grid.length < 6) {
-      grid.push("⬛")
-    }
-    
-    return grid.join("")
-  }
+  const emojiGrid = buildEmojiGrid(correct, guesses)
 
-  const handleShare = () => {
+  const handleShare = async () => {
     try {
-      const emojis = generateEmojiGrid()
-      const label = dailyDate
-        ? `SonglessUnlimited Daily ${dailyDate}`
-        : mode === "lyrics"
-          ? "SonglessUnlimited Lyrics"
-          : "SonglessUnlimited"
-      const icon = mode === "lyrics" ? "📝" : "🔊"
-      const shareText = `${label} #${trackIndex + 1}\nScore: ${score}\n${icon} ${emojis}\nhttps://songless.vercel.app`
-      
-      void navigator.clipboard.writeText(shareText)
+      const appUrl = resolveShareUrl(process.env.NEXT_PUBLIC_APP_URL, window.location.origin)
+      const shareText = buildShareText({
+        correct,
+        guesses,
+        trackIndex,
+        mode,
+        dailyDate,
+        score,
+        appUrl,
+      })
+      await copyShareText(navigator.clipboard, shareText)
       
       toast({
         title: "Copied to clipboard!",
@@ -160,7 +150,7 @@ export function GameModal({
           >
             <Share2 className="w-4 h-4" />
             SHARE RESULTS
-            <span className="ml-2 font-mono text-sm tracking-tighter text-gray-400">{generateEmojiGrid()}</span>
+            <span className="ml-2 font-mono text-sm tracking-tighter text-gray-400">{emojiGrid}</span>
           </Button>
 
           {/* Tertiary Action */}

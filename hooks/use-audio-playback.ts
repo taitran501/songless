@@ -156,8 +156,7 @@ export function useAudioPlayback({
     if (currentTrack.preview_url) return
 
     let isMounted = true
-    const query = `${currentTrack.artists} - ${currentTrack.name}`
-    const cacheKey = `songless_yt_cache_${encodeURIComponent(query.toLowerCase())}`
+    const cacheKey = `songless_yt_cache_${encodeURIComponent(currentTrack.uri.toLowerCase())}`
     const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
 
     if (cachedId) {
@@ -168,7 +167,9 @@ export function useAudioPlayback({
 
     setIsResolvingAudio(true)
     setLoadingStep("Searching YouTube for audio source...")
-    fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
+    fetch(
+      `/api/youtube/search?title=${encodeURIComponent(currentTrack.name)}&artists=${encodeURIComponent(currentTrack.artists)}`
+    )
       .then(async (response) => {
         const data = await response.json()
         if (!response.ok) {

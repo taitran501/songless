@@ -3,8 +3,7 @@
 // Check environment variables for deployment
 const requiredEnvVars = [
   'SPOTIFY_CLIENT_ID',
-  'SPOTIFY_CLIENT_SECRET',
-  'SPOTIFY_REDIRECT_URI'
+  'SPOTIFY_CLIENT_SECRET'
 ]
 
 console.log('Checking environment variables...')

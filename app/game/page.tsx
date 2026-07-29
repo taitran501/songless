@@ -12,11 +12,24 @@ import { ProgressPanel } from "@/components/game/progress-panel"
 import { clearSavedGame, useGameState } from "@/hooks/use-game-state"
 import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
-import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { useToast } from "@/hooks/use-toast"
-import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
+import {
+  createRunId,
+  isGenreSession,
+  readGameSession,
+  writeGameSession,
+  type GameSessionMeta,
+} from "@/lib/game-session"
+import {
+  completeGenreRun,
+  EMPTY_GENRE_PROGRESS,
+  readGenreProgress,
+  selectGenrePracticeTracks,
+  type GenreProgressRecord,
+} from "@/lib/genre-progress"
 import { isCorrectGuess } from "@/lib/guessing"
-import { isYoutubeTrack, type GameMode, type GameTrack } from "@/lib/tracks"
+import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
+import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
   return value
@@ -71,11 +84,38 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
     .map((item) => item.suggestion)
 }
 
+function createReplayRunId(session: GameSessionMeta, firstTrack?: GameTrack) {
+  if (session.playbackMode !== "lyrics" || !firstTrack) return createRunId("replay")
+
+  const currentSnippet = selectLyricsSnippetIndex(firstTrack, session.runId)
+  for (let attempt = 1; attempt <= 100; attempt++) {
+    const candidate = `${session.runId}-replay-${attempt}`
+    if (selectLyricsSnippetIndex(firstTrack, candidate) !== currentSnippet) return candidate
+  }
+  return createRunId("replay")
+}
+
+function createGenreReplay(
+  session: GameSessionMeta & { kind: "genre"; genre: NonNullable<GameSessionMeta["genre"]> },
+  currentTracks: GameTrack[]
+) {
+  const currentOrder = currentTracks.map((track) => track.uri).join("|")
+  for (let attempt = 1; attempt <= 100; attempt++) {
+    const runId = `${session.runId}-replay-${attempt}`
+    const tracks = selectGenrePracticeTracks(session.genre, runId)
+    if (tracks.map((track) => track.uri).join("|") !== currentOrder) {
+      return { runId, tracks }
+    }
+  }
+
+  const runId = createRunId("genre-replay")
+  return { runId, tracks: selectGenrePracticeTracks(session.genre, runId) }
+}
+
 export default function GamePage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { tracks, isLoading: tracksLoading } = useTracks()
-  const { accessToken, isLoading: authLoading } = useSpotifyAuth()
+  const { tracks, setTracks, isLoading: tracksLoading } = useTracks()
   const [isLoading, setIsLoading] = useState(true)
   const [guess, setGuess] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -92,15 +132,12 @@ export default function GamePage() {
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
   const [playlistComplete, setPlaylistComplete] = useState(false)
-  const [gameMode, setGameMode] = useState<GameMode>(() => {
-    if (typeof window === "undefined") return "audio"
-    return localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio"
-  })
-  const [dailyDate, setDailyDate] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem(DAILY_DATE_STORAGE_KEY)
-  })
+  const [session, setSession] = useState<GameSessionMeta | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
+  const [genreProgress, setGenreProgress] = useState<GenreProgressRecord>(EMPTY_GENRE_PROGRESS)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const gameMode: GameMode = session?.playbackMode ?? "audio"
+  const dailyDate = session?.dateKey ?? null
   const isLyricsMode = gameMode === "lyrics"
 
   const {
@@ -113,12 +150,15 @@ export default function GamePage() {
     score,
     correctCount,
     solvedStageTotal,
+    currentStreak,
+    bestRunStreak,
     recordCorrectGuess,
+    recordFailedTrack,
     resetRound,
     resetGame,
     stageDurations,
     stageScores,
-  } = useGameState({ tracks, tracksLoading })
+  } = useGameState({ tracks, tracksLoading, session })
 
   const currentTrack = tracks[currentIndex]
 
@@ -129,18 +169,22 @@ export default function GamePage() {
   })
 
   useEffect(() => {
-    setGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio")
-    setDailyDate(localStorage.getItem(DAILY_DATE_STORAGE_KEY))
+    const nextSession = readGameSession(localStorage)
+    setSession(nextSession)
+    if (isGenreSession(nextSession)) {
+      setGenreProgress(readGenreProgress(localStorage, nextSession.genre))
+    }
+    setSessionLoaded(true)
   }, [])
 
   useEffect(() => {
-    if (authLoading || tracksLoading) return
+    if (tracksLoading || !sessionLoaded) return
     if (tracks.length === 0) {
       router.push("/playlist")
       return
     }
     setIsLoading(false)
-  }, [authLoading, router, tracks.length, tracksLoading])
+  }, [router, sessionLoaded, tracks.length, tracksLoading])
 
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
@@ -156,43 +200,26 @@ export default function GamePage() {
           return
         }
 
-        const useSpotifySearch = Boolean(accessToken && currentTrack && !isYoutubeTrack(currentTrack))
-        const localSuggestions = useSpotifySearch ? [] : getLocalTrackSuggestions(query, tracks)
+        const localSuggestions = getLocalTrackSuggestions(query, tracks)
 
         if (localSuggestions.length >= 4) {
           setSuggestions(localSuggestions)
           return
         }
 
-        const response = useSpotifySearch
-          ? await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-          : await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
+        const response = await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
 
         if (response.ok) {
           const data = await response.json()
-          if (useSpotifySearch) {
-            const items = data.tracks?.items || []
-            setSuggestions(
-              items.map((item: any) => ({
-                uri: item.uri,
-                name: item.name,
-                artists: item.artists.map((artist: any) => artist.name).join(", "),
-                albumImage: item.album?.images?.[2]?.url || item.album?.images?.[0]?.url || null,
-              }))
-            )
-          } else {
-            const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
-            const externalSuggestions = (Array.isArray(data) ? data : [])
-              .filter((suggestion: GuessSuggestion) => {
-                if (!suggestion?.uri || seen.has(suggestion.uri)) return false
-                seen.add(suggestion.uri)
-                return true
-              })
-              .slice(0, Math.max(0, 6 - localSuggestions.length))
-            setSuggestions([...localSuggestions, ...externalSuggestions])
-          }
+          const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
+          const externalSuggestions = (Array.isArray(data) ? data : [])
+            .filter((suggestion: GuessSuggestion) => {
+              if (!suggestion?.uri || seen.has(suggestion.uri)) return false
+              seen.add(suggestion.uri)
+              return true
+            })
+            .slice(0, Math.max(0, 6 - localSuggestions.length))
+          setSuggestions([...localSuggestions, ...externalSuggestions])
         } else {
           setSuggestions([])
         }
@@ -203,7 +230,7 @@ export default function GamePage() {
         setIsSearching(false)
       }
     },
-    [accessToken, currentTrack, gameMode, tracks]
+    [gameMode, tracks]
   )
 
   useEffect(() => {
@@ -245,15 +272,16 @@ export default function GamePage() {
     // If it's a YouTube track, it already has videoId or can be derived, no need to search
     if (nextTrack.source === "youtube") return
 
-    const query = `${nextTrack.artists} - ${nextTrack.name}`
-    const cacheKey = `songless_yt_cache_${encodeURIComponent(query.toLowerCase())}`
+    const cacheKey = `songless_yt_cache_${encodeURIComponent(nextTrack.uri.toLowerCase())}`
     const cachedId = localStorage.getItem(cacheKey)
 
     if (cachedId) return // Already cached
 
     const prefetchNextTrack = async () => {
       try {
-        const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
+        const response = await fetch(
+          `/api/youtube/search?title=${encodeURIComponent(nextTrack.name)}&artists=${encodeURIComponent(nextTrack.artists)}`
+        )
         if (response.ok) {
           const data = await response.json()
           if (data.videoId) {
@@ -261,7 +289,7 @@ export default function GamePage() {
           }
         }
       } catch (err) {
-        console.warn("Background prefetch failed for:", query, err)
+        console.warn("Background prefetch failed for:", nextTrack.name, err)
       }
     }
 
@@ -306,6 +334,7 @@ export default function GamePage() {
     } else if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
+      recordFailedTrack()
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -329,6 +358,7 @@ export default function GamePage() {
     if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
+      recordFailedTrack()
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -356,32 +386,53 @@ export default function GamePage() {
 
     window.setTimeout(() => {
       resetRound()
+      if (isGenreSession(session)) {
+        setGenreProgress(
+          completeGenreRun(localStorage, session.genre, {
+            score,
+            bestStreak: bestRunStreak,
+            solved: correctCount,
+          })
+        )
+      }
       setPlaylistComplete(true)
     }, 220)
   }
 
   const handleExitPlaylist = () => {
     playback.resetPlayback()
-    clearSavedGame()
+    clearSavedGame(session)
     router.push("/playlist")
   }
 
   const handleBackHome = () => {
     playback.resetPlayback()
-    clearSavedGame()
+    clearSavedGame(session)
     router.push("/")
   }
 
   const handleReplayPlaylist = async () => {
     await stopRoundPlayback()
+    if (session) {
+      const genreReplay = isGenreSession(session) ? createGenreReplay(session, tracks) : null
+      const runId = genreReplay?.runId ?? createReplayRunId(session, tracks[0])
+      const nextSession = writeGameSession(localStorage, {
+        ...session,
+        runId,
+      })
+      if (genreReplay) {
+        setTracks(genreReplay.tracks)
+      }
+      setSession(nextSession)
+    }
     resetGame()
     setPlaylistComplete(false)
   }
 
   const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
-    clearSavedGame()
-    router.push("/playlist")
+    clearSavedGame(session)
+    router.push(isGenreSession(session) ? "/" : "/playlist")
   }
 
   const handlePlay = async () => {
@@ -419,8 +470,20 @@ export default function GamePage() {
     const averageStage = correctCount > 0 ? (solvedStageTotal / correctCount).toFixed(1) : "-"
     const maxScore = tracks.length * stageScores[0]
     const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
-    const completeLabel = dailyDate ? "Daily Complete" : isLyricsMode ? "Lyrics Complete" : "Playlist Complete"
-    const completeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
+    const completeLabel = dailyDate
+      ? "Daily Complete"
+      : isGenreSession(session)
+        ? "Genre Practice Complete"
+        : isLyricsMode
+          ? "Lyrics Complete"
+          : "Playlist Complete"
+    const completeModeLabel = dailyDate
+      ? "Daily Challenge"
+      : isGenreSession(session)
+        ? `${session.genre.toUpperCase()} Practice`
+        : isLyricsMode
+          ? "Partial Lyrics Mode"
+          : "Audio Playlist Mode"
 
     return (
       <div
@@ -475,6 +538,19 @@ export default function GamePage() {
               <p className="text-2xl font-extrabold text-white">{accuracy}%</p>
             </div>
 
+            {isGenreSession(session) && (
+              <>
+                <div className="bg-cyan-400/[0.06] border border-cyan-300/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-semibold">Run Streak</p>
+                  <p className="text-2xl font-extrabold text-white">{bestRunStreak}</p>
+                </div>
+                <div className="bg-cyan-400/[0.06] border border-cyan-300/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-semibold">Best Score</p>
+                  <p className="text-2xl font-extrabold text-white">{genreProgress.bestScore}</p>
+                </div>
+              </>
+            )}
+
             {/* Average clip heard — how quickly they got it on average */}
             {correctCount > 0 && (() => {
               const STAGE_DURATIONS_S = [0.5, 1, 2, 4, 8, 15]
@@ -500,10 +576,10 @@ export default function GamePage() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
               <RotateCcw className="w-4 h-4 mr-2" />
-              REPLAY PLAYLIST
+              {isGenreSession(session) ? "REPLAY GENRE" : "REPLAY PLAYLIST"}
             </Button>
             <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
-              LOAD ANOTHER
+              {isGenreSession(session) ? "CHOOSE ANOTHER" : "LOAD ANOTHER"}
             </Button>
           </div>
         </div>
@@ -515,8 +591,20 @@ export default function GamePage() {
     return null
   }
 
-  const activeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
-  const activeModeDetail = dailyDate ? dailyDate : isLyricsMode ? "Lyrics clues" : "Audio clips"
+  const activeModeLabel = dailyDate
+    ? "Daily Challenge"
+    : isGenreSession(session)
+      ? `${session.genre.toUpperCase()} Practice`
+      : isLyricsMode
+        ? "Partial Lyrics Mode"
+        : "Audio Playlist Mode"
+  const activeModeDetail = dailyDate
+    ? dailyDate
+    : isGenreSession(session)
+      ? `${currentStreak} current streak`
+      : isLyricsMode
+        ? "Lyrics clues"
+        : "Audio clips"
 
   return (
     <div
@@ -584,7 +672,11 @@ export default function GamePage() {
         />
 
         {isLyricsMode && currentTrack ? (
-          <LyricsCluePanel track={currentTrack} currentStage={currentStage} />
+          <LyricsCluePanel
+            track={currentTrack}
+            currentStage={currentStage}
+            snippetIndex={selectLyricsSnippetIndex(currentTrack, session?.runId ?? session?.id ?? "lyrics")}
+          />
         ) : (
           <PlaybackPanel
             isPlayerReady={playback.isPlayerReady}

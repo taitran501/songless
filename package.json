@@ -13,7 +13,8 @@
     "vercel-build": "next build",
     "check-env": "node scripts/check-env.js",
     "analyze:audio-start": "tsx scripts/analyze-audio-start.ts",
-    "test:e2e": "playwright test",
+    "smoke:youtube": "tsx scripts/smoke-youtube.ts",
+    "test:e2e": "node scripts/run-e2e.js",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts"
   },
   "dependencies": {

@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import type { GameTrack } from "@/lib/tracks"
 import { SPOTIFY_CONFIG, SPOTIFY_ENDPOINTS } from "@/lib/spotify-config"
-import { cookies } from "next/headers"
 
 async function getClientCredentialsToken() {
   if (!SPOTIFY_CONFIG.CLIENT_ID || !SPOTIFY_CONFIG.CLIENT_SECRET) {
@@ -28,9 +27,9 @@ async function getClientCredentialsToken() {
   return typeof data.access_token === "string" ? data.access_token : null
 }
 
-function getSpotifyErrorMessage(status: number, hasUserToken: boolean) {
-  if ((status === 401 || status === 403) && !hasUserToken) {
-    return "Connect Spotify to load private Spotify playlists."
+function getSpotifyErrorMessage(status: number) {
+  if (status === 401 || status === 403) {
+    return "This Spotify playlist is private or unavailable."
   }
 
   return "Failed to fetch playlist"
@@ -45,19 +44,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Playlist ID is required" }, { status: 400 })
     }
 
-    const authHeader = request.headers.get("authorization")
-    let userAccessToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : ""
-
-    if (!userAccessToken) {
-      const cookieStore = await cookies()
-      userAccessToken = cookieStore.get("spotify_access_token")?.value || ""
-    }
-
-    const accessToken = userAccessToken || (await getClientCredentialsToken())
+    const accessToken = await getClientCredentialsToken()
 
     if (!accessToken) {
       return NextResponse.json(
-        { error: "Spotify playlist loading is not configured for guest mode." },
+        { error: "Public Spotify playlist loading is not configured." },
         { status: 503 }
       )
     }
@@ -79,7 +70,7 @@ export async function GET(request: NextRequest) {
       }
     } else if (metadataResponse.status === 401 || metadataResponse.status === 403) {
       return NextResponse.json(
-        { error: getSpotifyErrorMessage(metadataResponse.status, Boolean(userAccessToken)) },
+        { error: getSpotifyErrorMessage(metadataResponse.status) },
         { status: metadataResponse.status }
       )
     }
@@ -100,7 +91,7 @@ export async function GET(request: NextRequest) {
 
       if (!response.ok) {
         return NextResponse.json(
-          { error: getSpotifyErrorMessage(response.status, Boolean(userAccessToken)) },
+          { error: getSpotifyErrorMessage(response.status) },
           { status: response.status }
         )
       }

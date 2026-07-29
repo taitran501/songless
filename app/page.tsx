@@ -1,56 +1,27 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, CalendarDays, FileText, Loader2, Music, Youtube } from "lucide-react"
-import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
+import { CalendarDays, FileText, Headphones, Music, Youtube } from "lucide-react"
 import { useTracks } from "@/hooks/tracks-store"
 import {
-  DAILY_DATE_STORAGE_KEY,
-  GAME_MODE_STORAGE_KEY,
   getLyricsModeTracks,
   getUtcDateKey,
   selectDailyTracks,
 } from "@/lib/curated-tracks"
+import { createGameSession, writeGameSession } from "@/lib/game-session"
+import { selectGenrePracticeTracks } from "@/lib/genre-progress"
+import type { TrackGenre } from "@/lib/tracks"
+
+const GENRE_LABELS: Record<TrackGenre, string> = {
+  vpop: "VPop",
+  usuk: "USUK",
+  rap: "Rap",
+}
 
 export default function LoginPage() {
   const router = useRouter()
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [initializingSpotify, setInitializingSpotify] = useState(false)
-  const { accessToken, isLoading: isAuthLoading } = useSpotifyAuth()
   const { setTracks } = useTracks()
-
-  useEffect(() => {
-    if (isAuthLoading) return
-    setLoading(false)
-  }, [isAuthLoading])
-
-  const handleSpotifyLogin = async () => {
-    setInitializingSpotify(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/spotify/config')
-      if (!response.ok) throw new Error('Failed to load Spotify configuration')
-
-      const config = await response.json()
-      if (!config.clientId) throw new Error("SPOTIFY_CLIENT_ID environment variable is not set")
-
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: config.clientId,
-        redirect_uri: config.redirectUri,
-        scope: config.scopes,
-        state: "STATE"
-      })
-
-      window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to initialize Spotify auth")
-      setInitializingSpotify(false)
-    }
-  }
 
   const handleGuestPlay = () => router.push("/playlist")
 
@@ -61,9 +32,15 @@ export default function LoginPage() {
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    localStorage.setItem("current_playlist_id", playlistId)
-    localStorage.setItem(GAME_MODE_STORAGE_KEY, "audio")
-    localStorage.setItem(DAILY_DATE_STORAGE_KEY, dateKey)
+    writeGameSession(
+      localStorage,
+      createGameSession({
+        kind: "daily",
+        playbackMode: "audio",
+        id: playlistId,
+        dateKey,
+      })
+    )
     router.push("/game")
   }
 
@@ -72,25 +49,30 @@ export default function LoginPage() {
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    localStorage.setItem("current_playlist_id", "lyrics-curated-v1")
-    localStorage.setItem(GAME_MODE_STORAGE_KEY, "lyrics")
-    localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
+    writeGameSession(
+      localStorage,
+      createGameSession({
+        kind: "lyrics",
+        playbackMode: "lyrics",
+        id: "lyrics-curated-v1",
+      })
+    )
     router.push("/game")
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex items-center justify-center font-sans">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 text-[#10b981] animate-spin mx-auto mb-4" />
-          <h1 className="font-display text-4xl font-extrabold tracking-tight text-white mb-2">
-            <span className="bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">Songless</span>
-            <span className="text-white font-light">Unlimited</span>
-          </h1>
-          <p className="text-[#6b7280] text-sm">Initializing...</p>
-        </div>
-      </div>
-    )
+  const startGenrePractice = (genre: TrackGenre) => {
+    const session = createGameSession({
+      kind: "genre",
+      playbackMode: "audio",
+      id: `genre-${genre}`,
+      genre,
+    })
+    const tracks = selectGenrePracticeTracks(genre, session.runId)
+
+    setTracks(tracks)
+    localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
+    writeGameSession(localStorage, session)
+    router.push("/game")
   }
 
   return (
@@ -119,15 +101,6 @@ export default function LoginPage() {
             Listen to a short clip. Guess the song. Beat your best score.
           </p>
 
-          {error && (
-            <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-4 mt-6 text-left max-w-md mx-auto animate-fade-in flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-display font-semibold text-sm text-red-400">Configuration Error</span>
-                <p className="text-red-200 text-xs mt-1">{error}</p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Mode Cards */}
@@ -178,8 +151,6 @@ export default function LoginPage() {
             </Button>
           </div>
 
-          {/* Spotify / Pro Mode (Temporarily Hidden) */}
-
           {/* Guest Mode */}
           <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -201,6 +172,36 @@ export default function LoginPage() {
             >
               Play as Guest
             </Button>
+          </div>
+
+          <div className="md:col-span-2 bg-[#090d16]/60 backdrop-blur-xl border border-cyan-400/15 hover:border-cyan-300/30 rounded-2xl p-7 transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-400/[0.03] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 shrink-0 rounded-2xl bg-cyan-400/10 border border-cyan-300/20 flex items-center justify-center">
+                  <Headphones className="w-7 h-7 text-cyan-300" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-cyan-300 font-semibold uppercase tracking-widest font-display">5 Songs Per Run</span>
+                  <h2 className="font-display text-xl font-bold text-white mt-1 mb-2">Practice by Genre</h2>
+                  <p className="text-[#6b7280] text-sm leading-relaxed">
+                    Build a local streak and beat your best score in one genre.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 sm:min-w-72">
+                {(["vpop", "usuk", "rap"] as TrackGenre[]).map((genre) => (
+                  <Button
+                    key={genre}
+                    onClick={() => startGenrePractice(genre)}
+                    variant="outline"
+                    className="bg-transparent border-cyan-300/20 hover:bg-cyan-300/10 text-[#dce5d9] font-semibold rounded-xl"
+                  >
+                    {GENRE_LABELS[genre]}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
 
         </div>
