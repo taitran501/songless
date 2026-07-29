@@ -1,15 +1,26 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { CalendarDays, FileText, Headphones, Music, Youtube } from "lucide-react"
-import { useTracks } from "@/hooks/tracks-store"
 import {
-  getUtcDateKey,
-  selectDailyTracks,
-} from "@/lib/curated-tracks"
+  CalendarDays,
+  FileText,
+  Flame,
+  Headphones,
+  ListMusic,
+  Music,
+  Trophy,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useTracks } from "@/hooks/tracks-store"
+import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
 import { createGameSession, writeGameSession } from "@/lib/game-session"
-import { selectGenrePracticeTracks } from "@/lib/genre-progress"
+import {
+  EMPTY_GENRE_PROGRESS,
+  readGenreProgress,
+  selectGenrePracticeTracks,
+  type GenreProgressRecord,
+} from "@/lib/genre-progress"
 import {
   readRecentLyricsTrackIds,
   rememberLyricsRun,
@@ -17,15 +28,33 @@ import {
 } from "@/lib/lyrics-runs"
 import type { TrackGenre } from "@/lib/tracks"
 
+const GENRES: TrackGenre[] = ["vpop", "usuk", "rap"]
 const GENRE_LABELS: Record<TrackGenre, string> = {
   vpop: "VPop",
   usuk: "USUK",
   rap: "Rap",
 }
+const EQUALIZER_HEIGHTS = [30, 58, 42, 78, 52, 88, 65, 46, 72, 38, 62, 48]
 
-export default function LoginPage() {
+function emptyGenreProgress() {
+  return Object.fromEntries(
+    GENRES.map((genre) => [genre, EMPTY_GENRE_PROGRESS])
+  ) as Record<TrackGenre, GenreProgressRecord>
+}
+
+export default function HomePage() {
   const router = useRouter()
   const { setTracks } = useTracks()
+  const [genreProgress, setGenreProgress] =
+    useState<Record<TrackGenre, GenreProgressRecord>>(emptyGenreProgress)
+
+  useEffect(() => {
+    setGenreProgress(
+      Object.fromEntries(
+        GENRES.map((genre) => [genre, readGenreProgress(localStorage, genre)])
+      ) as Record<TrackGenre, GenreProgressRecord>
+    )
+  }, [])
 
   const handleGuestPlay = () => router.push("/playlist")
 
@@ -82,139 +111,166 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col font-sans relative overflow-hidden">
-      {/* Ambient glows — same as playlist/game pages */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />
-      <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-500/5 blur-[120px] pointer-events-none" />
+    <div className="relative min-h-screen overflow-x-hidden bg-[#020617] font-sans text-[#dce5d9]">
+      <div className="pointer-events-none absolute left-[-10%] top-[-15%] h-[45%] w-[50%] rounded-full bg-indigo-500/10 blur-[130px]" />
+      <div className="pointer-events-none absolute bottom-[-15%] right-[-10%] h-[55%] w-[60%] rounded-full bg-[#10b981]/5 blur-[150px]" />
+      <div className="pointer-events-none absolute right-[12%] top-[35%] h-[35%] w-[35%] rounded-full bg-cyan-500/5 blur-[120px]" />
 
-      {/* Main content */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 relative z-10 py-12">
-
-        {/* Logo / Hero */}
-        <div className="text-center mb-12 animate-fade-in">
-          <div className="inline-flex items-center gap-2 mb-6 px-3 py-1.5 rounded-full bg-[#10b981]/10 border border-[#10b981]/20">
-            <Music className="w-3.5 h-3.5 text-[#10b981]" />
-            <span className="text-[#10b981] text-xs font-semibold uppercase tracking-widest font-display">Music Guessing Game</span>
+      <main className="relative z-10 mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+        <header className="mb-8 text-center animate-fade-in sm:mb-10">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#10b981]/20 bg-[#10b981]/10 px-3 py-1.5">
+            <Music className="h-3.5 w-3.5 text-[#10b981]" />
+            <span className="font-display text-[11px] font-semibold uppercase tracking-[0.18em] text-[#34d399]">
+              Music Guessing Game
+            </span>
           </div>
-          <h1 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight mb-4">
-            <span className="bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(16,185,129,0.3)]">
+          <h1 className="font-display text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-[3.5rem]">
+            <span className="bg-gradient-to-r from-[#10b981] via-emerald-300 to-[#10b981] bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(16,185,129,0.25)]">
               Songless
             </span>
-            <span className="text-white font-light">Unlimited</span>
+            <span className="font-light text-white">Unlimited</span>
           </h1>
-          <p className="text-[#9ca3af] text-base sm:text-lg max-w-md mx-auto leading-relaxed">
-            Listen to a short clip. Guess the song. Beat your best score.
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[#a8b0bf] sm:text-base">
+            Short music runs for a daily challenge, lyrics clues, playlists, or focused genre practice.
           </p>
+        </header>
 
-        </div>
-
-        {/* Mode Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-4xl animate-slide-up">
-
-          {/* Daily Challenge */}
-          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-[#10b981]/20 hover:border-[#10b981]/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5 hover:shadow-[0_0_40px_rgba(16,185,129,0.08)]">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#10b981]/3 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-            <div className="w-14 h-14 rounded-2xl bg-[#10b981]/10 border border-[#10b981]/25 flex items-center justify-center mb-5">
-              <CalendarDays className="w-7 h-7 text-[#10b981]" />
+        <section
+          data-testid="home-daily-card"
+          className="group relative mb-5 overflow-hidden rounded-3xl border border-[#10b981]/30 bg-[#08121a]/85 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] ring-1 ring-white/5 transition-colors hover:border-[#34d399]/55 sm:p-8"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/10 via-transparent to-indigo-500/[0.06]" />
+          <div className="relative grid items-center gap-7 md:grid-cols-[1fr_240px] lg:grid-cols-[1fr_300px]">
+            <div className="flex items-start gap-4 sm:gap-5">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#10b981]/30 bg-[#10b981]/12 sm:h-14 sm:w-14">
+                <CalendarDays className="h-6 w-6 text-[#34d399] sm:h-7 sm:w-7" />
+              </div>
+              <div>
+                <span className="font-display text-[10px] font-bold uppercase tracking-[0.2em] text-[#34d399]">
+                  Featured · 3 songs today
+                </span>
+                <h2 className="mt-1 font-display text-2xl font-bold text-white sm:text-3xl">
+                  Daily Challenge
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#a8b0bf]">
+                  The same balanced mix for everyone: one VPop, one USUK, and one Rap track.
+                </p>
+                <Button
+                  onClick={startDailyChallenge}
+                  className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
+                >
+                  Start Today&apos;s Challenge
+                </Button>
+              </div>
             </div>
 
-            <span className="text-[10px] text-[#10b981] font-semibold uppercase tracking-widest font-display mb-2">3 Songs Today</span>
-            <h2 className="font-display text-xl font-bold text-white mb-2">Daily Challenge</h2>
-            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
-              Play the same popular mix each day: USUK, VPop, and Rap.
-            </p>
-
-            <Button
-              onClick={startDailyChallenge}
-              className="w-full h-11 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.35)] transition-all duration-300 active:scale-[0.98]"
-            >
-              Start Daily Challenge
-            </Button>
+            <div aria-hidden="true" className="hidden h-28 items-end justify-center gap-2 rounded-2xl border border-white/10 bg-[#030712]/45 px-5 py-5 md:flex">
+              {EQUALIZER_HEIGHTS.map((height, index) => (
+                <span
+                  key={`${height}-${index}`}
+                  className="w-2 rounded-full bg-gradient-to-t from-[#059669] to-[#6ee7b7] opacity-80 transition-all duration-300 group-hover:opacity-100"
+                  style={{ height: `${height}%` }}
+                />
+              ))}
+            </div>
           </div>
+        </section>
 
-          {/* Lyrics Mode */}
-          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-indigo-400/20 hover:border-indigo-300/40 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-400/[0.03] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-            <div className="w-14 h-14 rounded-2xl bg-indigo-400/10 border border-indigo-300/20 flex items-center justify-center mb-5">
-              <FileText className="w-7 h-7 text-indigo-300" />
+        <section
+          data-testid="home-mode-grid"
+          className="grid grid-cols-1 gap-5 lg:grid-cols-3"
+        >
+          <article
+            data-testid="home-mode-card"
+            className="flex min-h-[330px] flex-col rounded-3xl border border-indigo-300/20 bg-[#090d16]/75 p-6 shadow-2xl ring-1 ring-white/5 transition-colors hover:border-indigo-300/40"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-indigo-300/25 bg-indigo-400/10">
+              <FileText className="h-6 w-6 text-indigo-300" />
             </div>
-
-            <span className="text-[10px] text-indigo-300 font-semibold uppercase tracking-widest font-display mb-2">No Audio Needed</span>
-            <h2 className="font-display text-xl font-bold text-white mb-2">Partial Lyrics Mode</h2>
-            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
-              Read a hidden lyric-style clue and guess the song without headphones.
+            <span className="mt-5 font-display text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-300">
+              5 songs · no audio
+            </span>
+            <h2 className="mt-1 font-display text-xl font-bold text-white">Lyrics Quick Mix</h2>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-[#a8b0bf]">
+              Solve five lyric clues across VPop, USUK, and Rap. Each clue reveals more without exposing the title.
             </p>
-
             <Button
               onClick={startLyricsMode}
               variant="outline"
-              className="w-full h-11 bg-transparent border border-indigo-300/20 hover:bg-indigo-300/10 text-[#dce5d9] font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
+              className="mt-6 h-11 w-full rounded-xl border-indigo-300/25 bg-indigo-300/[0.04] font-semibold text-white hover:bg-indigo-300/10 hover:text-white"
             >
-              Start Lyrics Mode
+              Start Lyrics Quick Mix
             </Button>
-          </div>
+          </article>
 
-          {/* Guest Mode */}
-          <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-            <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-5">
-              <Youtube className="w-7 h-7 text-red-400" />
+          <article
+            data-testid="home-mode-card"
+            className="flex min-h-[330px] flex-col rounded-3xl border border-sky-300/20 bg-[#090d16]/75 p-6 shadow-2xl ring-1 ring-white/5 transition-colors hover:border-sky-300/40"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-300/25 bg-sky-400/10">
+              <ListMusic className="h-6 w-6 text-sky-300" />
             </div>
-
-            <span className="text-[10px] text-red-400 font-semibold uppercase tracking-widest font-display mb-2">No Login Required</span>
-            <h2 className="font-display text-xl font-bold text-white mb-2">Guest Mode</h2>
-            <p className="text-[#6b7280] text-sm leading-relaxed mb-6 flex-1">
-              Load a YouTube playlist or public Spotify playlist and play right away.
+            <span className="mt-5 font-display text-[10px] font-bold uppercase tracking-[0.18em] text-sky-300">
+              YouTube · public Spotify
+            </span>
+            <h2 className="mt-1 font-display text-xl font-bold text-white">Playlist Mode</h2>
+            <p className="mt-2 flex-1 text-sm leading-relaxed text-[#a8b0bf]">
+              Bring a playlist, choose the run length, and play without signing in.
             </p>
-
             <Button
               onClick={handleGuestPlay}
               variant="outline"
-              className="w-full h-11 bg-transparent border border-white/10 hover:bg-white/5 text-[#dce5d9] font-semibold rounded-xl transition-all duration-300 active:scale-[0.98]"
+              className="mt-6 h-11 w-full rounded-xl border-sky-300/25 bg-sky-300/[0.04] font-semibold text-white hover:bg-sky-300/10 hover:text-white"
             >
-              Play as Guest
+              Open Playlist Setup
             </Button>
-          </div>
+          </article>
 
-          <div className="md:col-span-2 bg-[#090d16]/60 backdrop-blur-xl border border-cyan-400/15 hover:border-cyan-300/30 rounded-2xl p-7 transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-400/[0.03] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 shrink-0 rounded-2xl bg-cyan-400/10 border border-cyan-300/20 flex items-center justify-center">
-                  <Headphones className="w-7 h-7 text-cyan-300" />
-                </div>
-                <div>
-                  <span className="text-[10px] text-cyan-300 font-semibold uppercase tracking-widest font-display">5 Songs Per Run</span>
-                  <h2 className="font-display text-xl font-bold text-white mt-1 mb-2">Practice by Genre</h2>
-                  <p className="text-[#6b7280] text-sm leading-relaxed">
-                    Build a local streak and beat your best score in one genre.
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 sm:min-w-72">
-                {(["vpop", "usuk", "rap"] as TrackGenre[]).map((genre) => (
-                  <Button
-                    key={genre}
-                    onClick={() => startGenrePractice(genre)}
-                    variant="outline"
-                    className="bg-transparent border-cyan-300/20 hover:bg-cyan-300/10 text-[#dce5d9] font-semibold rounded-xl"
-                  >
-                    {GENRE_LABELS[genre]}
-                  </Button>
-                ))}
-              </div>
+          <article
+            data-testid="home-mode-card"
+            className="flex min-h-[330px] flex-col rounded-3xl border border-cyan-300/20 bg-[#090d16]/75 p-6 shadow-2xl ring-1 ring-white/5 transition-colors hover:border-cyan-300/40"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-400/10">
+              <Headphones className="h-6 w-6 text-cyan-300" />
             </div>
-          </div>
+            <span className="mt-5 font-display text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+              5 songs per run
+            </span>
+            <h2 className="mt-1 font-display text-xl font-bold text-white">Practice by Genre</h2>
+            <p className="mt-2 text-sm leading-relaxed text-[#a8b0bf]">
+              Build a local streak and improve your personal best in one genre.
+            </p>
 
-        </div>
+            <div className="mt-auto grid grid-cols-3 gap-2 pt-5">
+              {GENRES.map((genre) => {
+                const progress = genreProgress[genre]
+                return (
+                  <button
+                    key={genre}
+                    type="button"
+                    onClick={() => startGenrePractice(genre)}
+                    className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] px-2 py-3 text-center transition-colors hover:border-cyan-300/40 hover:bg-cyan-300/10"
+                  >
+                    <span className="block text-sm font-bold text-white">{GENRE_LABELS[genre]}</span>
+                    <span className="mt-1 flex items-center justify-center gap-2 text-[10px] text-[#8f9aaa]">
+                      <span className="inline-flex items-center gap-0.5" title="Best score">
+                        <Trophy className="h-3 w-3 text-amber-300" />
+                        {progress.bestScore}
+                      </span>
+                      <span className="inline-flex items-center gap-0.5" title="Best streak">
+                        <Flame className="h-3 w-3 text-orange-300" />
+                        {progress.bestStreak}
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </article>
+        </section>
 
-        {/* Bottom note */}
-        <p className="text-[#4b5563] text-xs mt-10 text-center">
-          Public Spotify playlists work in guest mode — no login needed.
+        <p className="mt-7 text-center text-xs text-[#697386]">
+          Progress stays on this device. Public playlist mode requires no user login.
         </p>
       </main>
     </div>
