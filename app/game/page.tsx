@@ -24,6 +24,10 @@ import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
 import { useToast } from "@/hooks/use-toast"
 import {
+  captureProductEvent,
+  getRunAnalyticsContext,
+} from "@/lib/analytics"
+import {
   completeDailyRun,
   EMPTY_DAILY_PROGRESS,
   readDailyProgress,
@@ -378,9 +382,38 @@ export default function GamePage() {
 
     const newGuesses = [...guesses, guess]
     setGuesses(newGuesses)
+    const correctGuess = isCorrectGuess({
+      guess,
+      target: currentTrack,
+      selectedUri,
+      selectedSuggestion,
+    })
+    if (session) {
+      captureProductEvent({
+        name: "guess_submitted",
+        properties: {
+          ...getRunAnalyticsContext(session),
+          trackNumber: currentIndex + 1,
+          stage: currentStage + 1,
+          correct: correctGuess,
+        },
+      })
+    }
 
-    if (isCorrectGuess({ guess, target: currentTrack, selectedUri, selectedSuggestion })) {
+    if (correctGuess) {
       recordCorrectGuess(currentStage, currentTrack, newGuesses)
+      if (session) {
+        captureProductEvent({
+          name: "track_completed",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 1,
+            solved: true,
+            score: stageScores[currentStage] || 0,
+          },
+        })
+      }
       setModalContent({
         correct: true,
         track: currentTrack,
@@ -390,9 +423,32 @@ export default function GamePage() {
       })
       setShowModal(true)
     } else if (currentStage < 5) {
+      if (session) {
+        captureProductEvent({
+          name: "clue_advanced",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 2,
+            reason: "wrong",
+          },
+        })
+      }
       setCurrentStage(currentStage + 1)
     } else {
       recordFailedTrack(currentTrack, newGuesses, currentStage)
+      if (session) {
+        captureProductEvent({
+          name: "track_completed",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 1,
+            solved: false,
+            score: 0,
+          },
+        })
+      }
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -414,9 +470,32 @@ export default function GamePage() {
     setGuesses(newGuesses)
 
     if (currentStage < 5) {
+      if (session) {
+        captureProductEvent({
+          name: "clue_advanced",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 2,
+            reason: "skip",
+          },
+        })
+      }
       setCurrentStage(currentStage + 1)
     } else {
       recordFailedTrack(currentTrack, newGuesses, currentStage)
+      if (session) {
+        captureProductEvent({
+          name: "track_completed",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 1,
+            solved: false,
+            score: 0,
+          },
+        })
+      }
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -464,11 +543,39 @@ export default function GamePage() {
           })
         )
       }
+      if (session) {
+        const startedAt = session.startedAt
+          ? new Date(session.startedAt).getTime()
+          : Number.NaN
+        const durationMs = Number.isFinite(startedAt)
+          ? Math.max(0, Date.now() - startedAt)
+          : undefined
+        captureProductEvent({
+          name: "run_completed",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            totalTracks: tracks.length,
+            solvedCount: correctCount,
+            score,
+            ...(durationMs === undefined ? {} : { durationMs }),
+          },
+        })
+      }
       setPlaylistComplete(true)
     }, 220)
   }
 
   const exitRun = () => {
+    if (session) {
+      captureProductEvent({
+        name: "run_abandoned",
+        properties: {
+          ...getRunAnalyticsContext(session),
+          trackNumber: currentIndex + 1,
+          stage: currentStage + 1,
+        },
+      })
+    }
     playback.resetPlayback()
     clearSavedGame(session)
     router.push(navigation.exitRoute)
@@ -548,11 +655,29 @@ export default function GamePage() {
         appUrl,
       })
       await copyShareText(navigator.clipboard, shareText)
+      captureProductEvent({
+        name: "result_shared",
+        properties: {
+          ...getRunAnalyticsContext(session),
+          scope: "run",
+          success: true,
+        },
+      })
       toast({
         title: "Run copied!",
         description: "Your complete result is ready to share.",
       })
     } catch (error) {
+      if (session) {
+        captureProductEvent({
+          name: "result_shared",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            scope: "run",
+            success: false,
+          },
+        })
+      }
       console.error("Failed to copy run result:", error)
       toast({
         title: "Copy failed",
@@ -880,6 +1005,7 @@ export default function GamePage() {
           mode={gameMode}
           dailyDate={dailyDate}
           score={score}
+          session={session}
         />
 
         <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>

@@ -23,6 +23,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useTracks } from "@/hooks/tracks-store"
+import {
+  captureProductEvent,
+  getRunAnalyticsContext,
+} from "@/lib/analytics"
 import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
 import {
   EMPTY_DAILY_PROGRESS,
@@ -73,6 +77,7 @@ export default function HomePage() {
   const [resumable, setResumable] = useState<ResumableGameSession | null>(null)
   const [confirmIntent, setConfirmIntent] = useState<"discard" | "start" | null>(null)
   const pendingStartRef = useRef<(() => void) | null>(null)
+  const homeViewedRef = useRef(false)
   const todayDateKey = getUtcDateKey()
   const todayDailyRecord =
     dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
@@ -86,6 +91,10 @@ export default function HomePage() {
     )
     setDailyProgress(readDailyProgress(localStorage))
     setResumable(readResumableGameSession(localStorage))
+    if (!homeViewedRef.current) {
+      homeViewedRef.current = true
+      captureProductEvent({ name: "home_viewed" })
+    }
   }, [])
 
   const requestNewRun = (start: () => void) => {
@@ -102,6 +111,15 @@ export default function HomePage() {
   const continueRun = () => {
     if (!resumable) return
     setTracks(resumable.tracks)
+    captureProductEvent({
+      name: "run_resumed",
+      properties: {
+        ...getRunAnalyticsContext(resumable.session),
+        trackNumber: resumable.state.currentIndex + 1,
+        stage: resumable.state.currentStage + 1,
+        totalTracks: resumable.tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -119,18 +137,23 @@ export default function HomePage() {
     const dateKey = getUtcDateKey()
     const tracks = selectDailyTracks(dateKey)
     const playlistId = `daily-audio-${dateKey}`
+    const session = createGameSession({
+      kind: "daily",
+      playbackMode: "audio",
+      id: playlistId,
+      dateKey,
+    })
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    writeGameSession(
-      localStorage,
-      createGameSession({
-        kind: "daily",
-        playbackMode: "audio",
-        id: playlistId,
-        dateKey,
-      })
-    )
+    writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -149,6 +172,13 @@ export default function HomePage() {
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
     rememberLyricsRun(localStorage, tracks)
     writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -164,6 +194,13 @@ export default function HomePage() {
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
     writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 

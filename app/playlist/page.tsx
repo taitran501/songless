@@ -9,6 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
+import {
+  captureProductEvent,
+  getRunAnalyticsContext,
+} from "@/lib/analytics"
 import { createGameSession, readGameSession, writeGameSession } from "@/lib/game-session"
 import {
   discardResumableGameSession,
@@ -497,15 +501,20 @@ export default function PlaylistPage() {
                   setTracks(processedTracks)
                   const playlistId = activePlaylistId || "guest-playlist"
                   const source = isYouTubePlaylistInput(playlistId) ? "youtube" : "spotify"
-                  writeGameSession(
-                    localStorage,
-                    createGameSession({
-                      kind: "playlist",
-                      playbackMode: "audio",
-                      id: playlistId,
-                      playlistSource: source,
-                    })
-                  )
+                  const session = createGameSession({
+                    kind: "playlist",
+                    playbackMode: "audio",
+                    id: playlistId,
+                    playlistSource: source,
+                  })
+                  writeGameSession(localStorage, session)
+                  captureProductEvent({
+                    name: "run_started",
+                    properties: {
+                      ...getRunAnalyticsContext(session),
+                      totalTracks: processedTracks.length,
+                    },
+                  })
                   router.push("/game")
                 }}
                 className="bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold text-base h-14 w-full rounded-xl shadow-lg hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
