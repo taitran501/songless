@@ -4,13 +4,17 @@ import { searchYouTubeVideo, YouTubeError } from "@/lib/youtube"
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const query = searchParams.get("q")
+    const title = searchParams.get("title")
+    const artists = searchParams.get("artists")
 
-    if (!query) {
-      return NextResponse.json({ error: "Query parameter 'q' is required." }, { status: 400 })
+    if (!title || !artists) {
+      return NextResponse.json(
+        { error: "Query parameters 'title' and 'artists' are required." },
+        { status: 400 }
+      )
     }
 
-    return NextResponse.json(await searchYouTubeVideo(query))
+    return NextResponse.json(await searchYouTubeVideo(title, artists))
   } catch (error) {
     if (error instanceof YouTubeError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

@@ -639,11 +639,11 @@ test("shows an audio error when YouTube fallback search fails", async ({ page })
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
-  await page.route("**/api/youtube/search?q=*", async (route) => {
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
     await route.fulfill({
       status: 404,
       contentType: "application/json",
-      body: JSON.stringify({ error: "No YouTube video was found." }),
+      body: JSON.stringify({ error: "No verified YouTube audio source was found for this track." }),
     })
   })
 
@@ -663,11 +663,16 @@ test("falls back from Spotify no-preview tracks to YouTube playback", async ({ p
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
-  await page.route("**/api/youtube/search?q=*", async (route) => {
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ videoId: "6uVJqD2hSGQ" }),
+      body: JSON.stringify({
+        videoId: "6uVJqD2hSGQ",
+        matchedTitle: "No Preview Song",
+        matchedArtists: "Fallback Artist",
+        matchScore: 140,
+      }),
     })
   })
 

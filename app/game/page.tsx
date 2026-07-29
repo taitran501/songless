@@ -245,15 +245,16 @@ export default function GamePage() {
     // If it's a YouTube track, it already has videoId or can be derived, no need to search
     if (nextTrack.source === "youtube") return
 
-    const query = `${nextTrack.artists} - ${nextTrack.name}`
-    const cacheKey = `songless_yt_cache_${encodeURIComponent(query.toLowerCase())}`
+    const cacheKey = `songless_yt_cache_${encodeURIComponent(nextTrack.uri.toLowerCase())}`
     const cachedId = localStorage.getItem(cacheKey)
 
     if (cachedId) return // Already cached
 
     const prefetchNextTrack = async () => {
       try {
-        const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}`)
+        const response = await fetch(
+          `/api/youtube/search?title=${encodeURIComponent(nextTrack.name)}&artists=${encodeURIComponent(nextTrack.artists)}`
+        )
         if (response.ok) {
           const data = await response.json()
           if (data.videoId) {
@@ -261,7 +262,7 @@ export default function GamePage() {
           }
         }
       } catch (err) {
-        console.warn("Background prefetch failed for:", query, err)
+        console.warn("Background prefetch failed for:", nextTrack.name, err)
       }
     }
 
