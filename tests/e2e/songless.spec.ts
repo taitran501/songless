@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 const mockTracks = [
   {
@@ -59,65 +59,6 @@ async function seedStorage(page: Page, values: Record<string, string>) {
       window.localStorage.setItem(key, value)
     }
   }, values)
-}
-
-async function mockSpotifyDevices(page: Page, status = 200) {
-  await page.route("https://api.spotify.com/v1/me/player/devices", async (route) => {
-    await route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify({ devices: [] }),
-    })
-  })
-}
-
-async function mockSpotifySdk(page: Page) {
-  await page.route("https://sdk.scdn.co/spotify-player.js", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/javascript",
-      body: `
-        (() => {
-          class MockPlayer {
-            constructor(config) {
-              this.config = config;
-              this.listeners = {};
-            }
-            addListener(event, callback) {
-              this.listeners[event] = callback;
-            }
-            connect() {
-              setTimeout(() => {
-                if (this.listeners.ready) {
-                  this.listeners.ready({ device_id: "test-device-id" });
-                }
-              }, 0);
-              return Promise.resolve(true);
-            }
-            disconnect() {
-              return undefined;
-            }
-            pause() {
-              return Promise.resolve();
-            }
-            resume() {
-              return Promise.resolve();
-            }
-            getCurrentState() {
-              return Promise.resolve({});
-            }
-          }
-
-          window.Spotify = { Player: MockPlayer };
-          setTimeout(() => {
-            if (window.onSpotifyWebPlaybackSDKReady) {
-              window.onSpotifyWebPlaybackSDKReady();
-            }
-          }, 0);
-        })();
-      `,
-    })
-  })
 }
 
 async function mockHtmlAudio(page: Page) {
@@ -247,98 +188,6 @@ async function mockSeekSensitiveYouTubeIframe(page: Page) {
   })
 }
 
-async function mockPremiumPlayback(page: Page) {
-  await page.route(/https:\/\/api\.spotify\.com\/v1\/me\/player$/, async (route: Route) => {
-    const method = route.request().method()
-
-    if (method === "GET") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ device: { id: "test-device-id" } }),
-      })
-      return
-    }
-
-    await route.fulfill({
-      status: 204,
-      body: "",
-    })
-  })
-
-  await page.route(/https:\/\/api\.spotify\.com\/v1\/me\/player\/play\?device_id=.*/, async (route) => {
-    await route.fulfill({
-      status: 204,
-      body: "",
-    })
-  })
-}
-
-test("shows a configuration error when Spotify config is missing", async ({ page }) => {
-  await page.route("**/api/spotify/config", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        clientId: "",
-        redirectUri: "http://127.0.0.1:3100/callback",
-        scopes: "streaming",
-      }),
-    })
-  })
-
-  await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify" }).click()
-
-  await expect(page.getByText("Configuration Error")).toBeVisible()
-  await expect(page.getByText("SPOTIFY_CLIENT_ID environment variable is not set")).toBeVisible()
-})
-
-test("redirects to Spotify authorize with the callback page redirect URI", async ({ page }) => {
-  await page.route("**/api/spotify/config", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        clientId: "test-client-id",
-        redirectUri: "http://127.0.0.1:3100/callback",
-        scopes: "streaming user-read-email",
-      }),
-    })
-  })
-
-  await page.goto("/")
-  await page.getByRole("button", { name: "Connect Spotify" }).click()
-
-  await page.waitForURL(/https:\/\/accounts\.spotify\.com\//)
-  const redirectUrl = decodeURIComponent(page.url())
-  expect(redirectUrl).toContain("redirect_uri=http%3A%2F%2F127.0.0.1%3A3100%2Fcallback")
-})
-
-test("stores tokens and lands on playlist after a successful callback exchange", async ({ page }) => {
-  await mockSpotifyDevices(page)
-
-  await page.route("**/api/spotify/callback", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        access_token: "new-access-token",
-        refresh_token: "new-refresh-token",
-        expires_in: 3600,
-      }),
-    })
-  })
-
-  await page.goto("/callback?code=test-code")
-
-  await page.waitForURL("**/playlist")
-  await expect(page.getByText(/connect playlist/i)).toBeVisible()
-
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBe("new-access-token")
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_refresh_token"))).toBe("new-refresh-token")
-})
-
 test("allows unauthenticated users to access the playlist page as guest", async ({ page }) => {
   await page.goto("/playlist")
 
@@ -346,14 +195,6 @@ test("allows unauthenticated users to access the playlist page as guest", async 
 })
 
 test("loads playlist tracks and enables the start-game state", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
     await route.fulfill({
       status: 200,
@@ -372,24 +213,6 @@ test("loads playlist tracks and enables the start-game state", async ({ page }) 
   await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
 })
 
-test("lets a connected user fall back to guest mode", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-  await page.goto("/playlist")
-
-  await expect(page.getByRole("button", { name: "Use Guest Mode" })).toBeVisible()
-  await page.getByRole("button", { name: "Use Guest Mode" }).click()
-
-  await expect(page.getByText("Guest mode is active")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Connect Spotify" })).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("spotify_access_token"))).toBeNull()
-})
-
 test("shows playlist mode and lets the user return home", async ({ page }) => {
   await page.goto("/playlist")
 
@@ -401,14 +224,6 @@ test("shows playlist mode and lets the user return home", async ({ page }) => {
 })
 
 test("loads YouTube playlist tracks and enables the start-game state", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({
       status: 200,
@@ -545,9 +360,6 @@ test("accepts a correct partial lyrics guess", async ({ page }) => {
 test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
   await mockHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
 
@@ -563,9 +375,6 @@ test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
 test("shows an audio error when Spotify preview playback fails", async ({ page }) => {
   await mockBrokenHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
 
@@ -633,9 +442,6 @@ test("starts YouTube playback from the configured audio start point", async ({ p
 
 test("shows an audio error when YouTube fallback search fails", async ({ page }) => {
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
@@ -657,9 +463,6 @@ test("shows an audio error when YouTube fallback search fails", async ({ page })
 test("falls back from Spotify no-preview tracks to YouTube playback", async ({ page }) => {
   await mockYouTubeIframe(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
   })
 
@@ -776,14 +579,6 @@ test("accepts a selected YouTube search suggestion in guest mode", async ({ page
 })
 
 test("shows error when YouTube playlist fails to load", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "playlist-token",
-    spotify_refresh_token: "playlist-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-
   await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({
       status: 404,
@@ -801,31 +596,17 @@ test("shows error when YouTube playlist fails to load", async ({ page }) => {
 })
 
 test("redirects the game page back to playlist when no tracks are loaded", async ({ page }) => {
-  await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
-  })
-
-  await mockSpotifyDevices(page)
-  await mockPremiumPlayback(page)
-
   await page.goto("/game")
 
   await page.waitForURL("**/playlist")
   await expect(page.getByText(/connect playlist/i)).toBeVisible()
 })
 
-test("supports the main game controls with mocked Spotify playback", async ({ page }) => {
+test("supports the main game controls with mocked audio playback", async ({ page }) => {
+  await mockHtmlAudio(page)
   await seedStorage(page, {
-    spotify_access_token: "game-token",
-    spotify_refresh_token: "game-refresh",
-    spotify_expires_at: "9999999999999",
     game_tracks: JSON.stringify(mockTracks),
   })
-
-  await mockSpotifySdk(page)
-  await mockPremiumPlayback(page)
 
   await page.goto("/game")
 

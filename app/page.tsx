@@ -1,10 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, CalendarDays, FileText, Loader2, Music, Youtube } from "lucide-react"
-import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
+import { CalendarDays, FileText, Music, Youtube } from "lucide-react"
 import { useTracks } from "@/hooks/tracks-store"
 import {
   DAILY_DATE_STORAGE_KEY,
@@ -16,41 +14,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter()
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [initializingSpotify, setInitializingSpotify] = useState(false)
-  const { accessToken, isLoading: isAuthLoading } = useSpotifyAuth()
   const { setTracks } = useTracks()
-
-  useEffect(() => {
-    if (isAuthLoading) return
-    setLoading(false)
-  }, [isAuthLoading])
-
-  const handleSpotifyLogin = async () => {
-    setInitializingSpotify(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/spotify/config')
-      if (!response.ok) throw new Error('Failed to load Spotify configuration')
-
-      const config = await response.json()
-      if (!config.clientId) throw new Error("SPOTIFY_CLIENT_ID environment variable is not set")
-
-      const params = new URLSearchParams({
-        response_type: "code",
-        client_id: config.clientId,
-        redirect_uri: config.redirectUri,
-        scope: config.scopes,
-        state: "STATE"
-      })
-
-      window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to initialize Spotify auth")
-      setInitializingSpotify(false)
-    }
-  }
 
   const handleGuestPlay = () => router.push("/playlist")
 
@@ -76,21 +40,6 @@ export default function LoginPage() {
     localStorage.setItem(GAME_MODE_STORAGE_KEY, "lyrics")
     localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
     router.push("/game")
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex items-center justify-center font-sans">
-        <div className="text-center">
-          <Loader2 className="w-10 h-10 text-[#10b981] animate-spin mx-auto mb-4" />
-          <h1 className="font-display text-4xl font-extrabold tracking-tight text-white mb-2">
-            <span className="bg-gradient-to-r from-[#10b981] via-emerald-400 to-[#10b981] bg-clip-text text-transparent">Songless</span>
-            <span className="text-white font-light">Unlimited</span>
-          </h1>
-          <p className="text-[#6b7280] text-sm">Initializing...</p>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -119,15 +68,6 @@ export default function LoginPage() {
             Listen to a short clip. Guess the song. Beat your best score.
           </p>
 
-          {error && (
-            <div className="bg-red-950/20 border border-red-500/30 rounded-xl p-4 mt-6 text-left max-w-md mx-auto animate-fade-in flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-display font-semibold text-sm text-red-400">Configuration Error</span>
-                <p className="text-red-200 text-xs mt-1">{error}</p>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Mode Cards */}
@@ -177,8 +117,6 @@ export default function LoginPage() {
               Start Lyrics Mode
             </Button>
           </div>
-
-          {/* Spotify / Pro Mode (Temporarily Hidden) */}
 
           {/* Guest Mode */}
           <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/5 hover:border-white/10 rounded-2xl p-7 flex flex-col items-center text-center transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">

@@ -9,11 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
-import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
-import { ArrowLeft, Shuffle, Play, Info, Music, Smartphone, ShieldAlert, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
+import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
@@ -32,9 +31,7 @@ export default function PlaylistPage() {
   }[]>([])
   const router = useRouter()
   const { tracks, setTracks } = useTracks()
-  const { accessToken, logout } = useSpotifyAuth()
-  const hasSpotifyConnection = Boolean(accessToken)
-  const modeLabel = hasSpotifyConnection ? "Spotify Playlist Mode" : "Guest Playlist Mode"
+  const modeLabel = "Guest Playlist Mode"
 
   // Load recent playlists on mount and restore active playlist
   useEffect(() => {
@@ -50,36 +47,6 @@ export default function PlaylistPage() {
     const currentId = localStorage.getItem("current_playlist_id")
     if (currentId) setActivePlaylistId(currentId)
   }, [])
-
-  useEffect(() => {
-    if (!accessToken) {
-      return
-    }
-
-    // Check if token has streaming scope by testing Web Playback SDK
-    const testStreamingAccess = async () => {
-      try {
-        const response = await fetch("https://api.spotify.com/v1/me/player/devices", {
-          headers: {
-            "Authorization": `Bearer ${accessToken}`
-          }
-        })
-        
-        if (!response.ok) {
-          // Token is invalid or missing required scopes, clear and let them be a guest
-          logout()
-          setError("Your Spotify session expired. Spotify features are locked, but you can still play YouTube playlists.")
-          return
-        }
-      } catch (error) {
-        console.error("Error checking token scopes:", error)
-        logout()
-        setError("Could not verify Spotify session. Running in guest mode.")
-      }
-    }
-
-    testStreamingAccess()
-  }, [accessToken, logout])
 
   const extractPlaylistId = (input: string) => {
     // Extract playlist ID from URL or return as-is if it's already an ID
@@ -115,24 +82,7 @@ export default function PlaylistPage() {
           playlistName = decodeURIComponent(nameHeader)
         }
       } else {
-        const accessToken = localStorage.getItem("spotify_access_token")
-        const response = await fetch(
-          `/api/spotify/playlist?playlistId=${playlistId}`,
-          accessToken
-            ? {
-                headers: {
-                  "Authorization": `Bearer ${accessToken}`
-                }
-              }
-            : undefined
-        )
-
-        if (response.status === 401 && accessToken) {
-          logout()
-          setError("Your Spotify session expired. Please log in again.")
-          router.push("/")
-          return
-        }
+        const response = await fetch(`/api/spotify/playlist?playlistId=${playlistId}`)
 
         if (!response.ok) {
           const errorData = await response.json()
@@ -233,9 +183,7 @@ export default function PlaylistPage() {
             Songless<span className="text-white font-light">Unlimited</span>
           </h1>
           <p className="text-[#9ca3af] text-sm max-w-md mx-auto leading-relaxed">
-            {hasSpotifyConnection
-              ? "Load a Spotify or YouTube playlist, listen to the clip, and name the tune."
-              : "Guest mode is active. Load a YouTube or public Spotify playlist without signing in."}
+            Guest mode is active. Load a YouTube or public Spotify playlist without signing in.
           </p>
         </header>
 
@@ -246,18 +194,16 @@ export default function PlaylistPage() {
                 <Music className="w-5 h-5 text-[#10b981]" />
               </div>
               <span className="font-display tracking-wide">CONNECT PLAYLIST</span>
-              {!hasSpotifyConnection && (
-                <span className="ml-auto font-display text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2.5 py-1 tracking-wider uppercase font-semibold">
-                  Guest
-                </span>
-              )}
+              <span className="ml-auto font-display text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-full px-2.5 py-1 tracking-wider uppercase font-semibold">
+                Guest
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6 space-y-4">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="playlist-input" className="text-gray-300 text-sm font-medium">
-                  {hasSpotifyConnection ? "Spotify or YouTube Playlist URL or ID" : "YouTube or public Spotify Playlist URL or ID"}
+                  YouTube or public Spotify Playlist URL or ID
                 </Label>
                 <Input
                   id="playlist-input"
@@ -295,33 +241,6 @@ export default function PlaylistPage() {
                   )}
                 </Button>
 
-                {hasSpotifyConnection && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        logout()
-                        setError(null)
-                      }}
-                      className="bg-transparent border border-red-500/20 hover:bg-red-500/10 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
-                    >
-                      <Youtube className="w-4 h-4 mr-2 text-red-400" />
-                      Use Guest Mode
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        logout()
-                        router.push("/")
-                      }}
-                      className="bg-transparent border border-white/10 hover:bg-white/5 text-gray-300 hover:text-white h-12 rounded-xl font-medium transition-all active:scale-[0.98]"
-                    >
-                      Disconnect Spotify
-                    </Button>
-                  </div>
-                )}
               </div>
             </form>
           </CardContent>
@@ -586,54 +505,16 @@ export default function PlaylistPage() {
             </div>
           </div>
           <CardContent className="p-6 space-y-4">
-            {hasSpotifyConnection ? (
-              <>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="bg-[#030712]/30 p-4 rounded-xl border border-white/5 space-y-2 hover:border-[#10b981]/20 transition-colors">
-                    <div className="flex items-center space-x-2 text-[#10b981]">
-                      <Music className="w-4 h-4" />
-                      <span className="font-display font-semibold text-[10px] uppercase tracking-wider">Spotify Account</span>
-                    </div>
-                    <h3 className="text-white font-semibold text-sm">Spotify Playback</h3>
-                    <p className="text-gray-400 text-xs leading-relaxed">
-                      Public Spotify playlists also work in guest mode. Login is still needed for private playlists and Spotify playback.
-                    </p>
-                  </div>
-
-                  <div className="bg-[#030712]/30 p-4 rounded-xl border border-white/5 space-y-2 hover:border-[#10b981]/20 transition-colors">
-                    <div className="flex items-center space-x-2 text-[#10b981]">
-                      <Smartphone className="w-4 h-4" />
-                      <span className="font-display font-semibold text-[10px] uppercase tracking-wider">Active Device</span>
-                    </div>
-                    <h3 className="text-white font-semibold text-sm">SDK Player Link</h3>
-                    <p className="text-gray-400 text-xs leading-relaxed">
-                      Keep Spotify desktop or mobile active if you use Spotify playback.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-amber-950/15 border border-amber-500/20 rounded-xl p-4 flex items-start space-x-3">
-                  <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <h4 className="text-amber-400 font-semibold text-xs uppercase tracking-wide">Troubleshooting 403 Errors</h4>
-                    <p className="text-gray-400 text-[11px] leading-relaxed">
-                      If Spotify device transfer fails, open Spotify, play any track briefly, then return to the game.
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="bg-[#030712]/30 p-4 rounded-xl border border-[#10b981]/20 space-y-2">
-                <div className="flex items-center space-x-2 text-red-400">
-                  <Music className="w-4 h-4" />
-                  <span className="font-semibold text-[10px] uppercase tracking-wider">Guest Mode</span>
-                </div>
-                <h3 className="text-white font-semibold text-sm">YouTube and public Spotify playlists</h3>
-                <p className="text-gray-400 text-xs leading-relaxed">
-                  Paste a YouTube playlist or public Spotify playlist URL to play immediately.
-                </p>
+            <div className="bg-[#030712]/30 p-4 rounded-xl border border-[#10b981]/20 space-y-2">
+              <div className="flex items-center space-x-2 text-red-400">
+                <Music className="w-4 h-4" />
+                <span className="font-semibold text-[10px] uppercase tracking-wider">Guest Mode</span>
               </div>
-            )}
+              <h3 className="text-white font-semibold text-sm">YouTube and public Spotify playlists</h3>
+              <p className="text-gray-400 text-xs leading-relaxed">
+                Paste a YouTube playlist or public Spotify playlist URL to play immediately.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>

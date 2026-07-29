@@ -19,7 +19,6 @@ export default defineConfig({
     env: {
       SPOTIFY_CLIENT_ID: "test-client-id",
       SPOTIFY_CLIENT_SECRET: "test-client-secret",
-      SPOTIFY_REDIRECT_URI: "http://127.0.0.1:3100/callback",
     },
   },
   projects: [

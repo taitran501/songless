@@ -12,11 +12,10 @@ import { ProgressPanel } from "@/components/game/progress-panel"
 import { clearSavedGame, useGameState } from "@/hooks/use-game-state"
 import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
-import { useSpotifyAuth } from "@/hooks/use-spotify-auth"
 import { useToast } from "@/hooks/use-toast"
 import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
 import { isCorrectGuess } from "@/lib/guessing"
-import { isYoutubeTrack, type GameMode, type GameTrack } from "@/lib/tracks"
+import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
   return value
@@ -75,7 +74,6 @@ export default function GamePage() {
   const router = useRouter()
   const { toast } = useToast()
   const { tracks, isLoading: tracksLoading } = useTracks()
-  const { accessToken, isLoading: authLoading } = useSpotifyAuth()
   const [isLoading, setIsLoading] = useState(true)
   const [guess, setGuess] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -134,13 +132,13 @@ export default function GamePage() {
   }, [])
 
   useEffect(() => {
-    if (authLoading || tracksLoading) return
+    if (tracksLoading) return
     if (tracks.length === 0) {
       router.push("/playlist")
       return
     }
     setIsLoading(false)
-  }, [authLoading, router, tracks.length, tracksLoading])
+  }, [router, tracks.length, tracksLoading])
 
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
@@ -156,43 +154,26 @@ export default function GamePage() {
           return
         }
 
-        const useSpotifySearch = Boolean(accessToken && currentTrack && !isYoutubeTrack(currentTrack))
-        const localSuggestions = useSpotifySearch ? [] : getLocalTrackSuggestions(query, tracks)
+        const localSuggestions = getLocalTrackSuggestions(query, tracks)
 
         if (localSuggestions.length >= 4) {
           setSuggestions(localSuggestions)
           return
         }
 
-        const response = useSpotifySearch
-          ? await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=6`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-          : await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
+        const response = await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
 
         if (response.ok) {
           const data = await response.json()
-          if (useSpotifySearch) {
-            const items = data.tracks?.items || []
-            setSuggestions(
-              items.map((item: any) => ({
-                uri: item.uri,
-                name: item.name,
-                artists: item.artists.map((artist: any) => artist.name).join(", "),
-                albumImage: item.album?.images?.[2]?.url || item.album?.images?.[0]?.url || null,
-              }))
-            )
-          } else {
-            const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
-            const externalSuggestions = (Array.isArray(data) ? data : [])
-              .filter((suggestion: GuessSuggestion) => {
-                if (!suggestion?.uri || seen.has(suggestion.uri)) return false
-                seen.add(suggestion.uri)
-                return true
-              })
-              .slice(0, Math.max(0, 6 - localSuggestions.length))
-            setSuggestions([...localSuggestions, ...externalSuggestions])
-          }
+          const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
+          const externalSuggestions = (Array.isArray(data) ? data : [])
+            .filter((suggestion: GuessSuggestion) => {
+              if (!suggestion?.uri || seen.has(suggestion.uri)) return false
+              seen.add(suggestion.uri)
+              return true
+            })
+            .slice(0, Math.max(0, 6 - localSuggestions.length))
+          setSuggestions([...localSuggestions, ...externalSuggestions])
         } else {
           setSuggestions([])
         }
@@ -203,7 +184,7 @@ export default function GamePage() {
         setIsSearching(false)
       }
     },
-    [accessToken, currentTrack, gameMode, tracks]
+    [gameMode, tracks]
   )
 
   useEffect(() => {
