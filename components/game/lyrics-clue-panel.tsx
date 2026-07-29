@@ -23,7 +23,7 @@ export function LyricsCluePanel({ track, currentStage, snippetIndex = 0 }: Lyric
         </div>
       </div>
 
-      <p className="text-xl sm:text-2xl leading-relaxed text-white font-semibold">
+      <p data-testid="lyrics-clue" className="text-xl sm:text-2xl leading-relaxed text-white font-semibold">
         {buildLyricsClue(track, currentStage, snippetIndex)}
       </p>
       <p className="text-xs text-[#6b7280] mt-4">

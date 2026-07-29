@@ -53,12 +53,44 @@ const mockSpotifyNoPreviewTracks = [
   },
 ]
 
+const mockLyricsTrack = {
+  source: "youtube",
+  uri: "youtube:lyrics-test",
+  videoId: "lyrics-test",
+  name: "Hidden Answer",
+  artists: "Secret Singer",
+  duration_ms: 180000,
+  albumImage: null,
+  preview_url: null,
+  genre: "vpop",
+  challengeId: "lyrics-test",
+  lyricsSnippets: [
+    "Morning windows glow while quiet streets awaken",
+    "Silver rivers carry every distant promise",
+    "Paper lanterns drift beneath a violet skyline",
+  ],
+}
+
 async function seedStorage(page: Page, values: Record<string, string>) {
   await page.addInitScript((entries) => {
     for (const [key, value] of Object.entries(entries)) {
       window.localStorage.setItem(key, value)
     }
   }, values)
+}
+
+async function mockClipboard(page: Page, shouldReject = false) {
+  await page.addInitScript((rejectWrite) => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        async writeText(value: string) {
+          if (rejectWrite) throw new Error("clipboard blocked")
+          ;(window as any).__copiedShareText = value
+        },
+      },
+    })
+  }, shouldReject)
 }
 
 async function mockHtmlAudio(page: Page) {
@@ -329,6 +361,66 @@ test("keeps daily challenge progress in a daily-specific state key", async ({ pa
   }).toContain('"currentStage":1')
 })
 
+test("runs five genre tracks and persists local progression", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "VPop" }).click()
+
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  const firstRun = await page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+    return {
+      runId: session?.runId,
+      kind: session?.kind,
+      genre: session?.genre,
+      uris: tracks.map((track: any) => track.uri),
+      tracks,
+    }
+  })
+
+  expect(firstRun.kind).toBe("genre")
+  expect(firstRun.genre).toBe("vpop")
+  expect(firstRun.uris).toHaveLength(5)
+  expect(new Set(firstRun.uris).size).toBe(5)
+  expect(firstRun.tracks.every((track: any) => track.genre === "vpop")).toBe(true)
+
+  for (let index = 0; index < firstRun.tracks.length; index++) {
+    await page.getByPlaceholder("Know the song? Search artist or title...").fill(firstRun.tracks[index].name)
+    await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+    await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+    await page.getByRole("button", { name: index === 4 ? "VIEW SUMMARY" : "NEXT SONG" }).click()
+  }
+
+  await expect(page.getByText("Genre Practice Complete")).toBeVisible()
+  await expect(page.getByText("Run Streak").locator("..").getByText("5")).toBeVisible()
+  await expect(page.getByText("Best Score").locator("..").getByText("500")).toBeVisible()
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const store = JSON.parse(window.localStorage.getItem("songless_genre_progress_v1") || "{}")
+      return store["audio:vpop"]
+    })
+  }).toEqual({
+    bestStreak: 5,
+    bestScore: 500,
+    completedRuns: 1,
+    totalSolved: 5,
+  })
+
+  await page.getByRole("button", { name: "REPLAY GENRE" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+      return {
+        runId: session?.runId,
+        uris: tracks.map((track: any) => track.uri),
+      }
+    })
+  }).not.toEqual({ runId: firstRun.runId, uris: firstRun.uris })
+})
+
 test("plays partial lyrics mode without audio controls", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
@@ -366,6 +458,73 @@ test("accepts a correct partial lyrics guess", async ({ page }) => {
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
 
   await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+})
+
+test("keeps a lyrics clue on refresh and rotates it on replay", async ({ page }) => {
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-e2e",
+      runId: "lyrics-run-1",
+    }),
+  })
+
+  await page.goto("/game")
+  const firstClue = await page.getByTestId("lyrics-clue").innerText()
+  await page.reload()
+  await expect(page.getByTestId("lyrics-clue")).toHaveText(firstClue)
+
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
+  await expect(page.getByText("Lyrics Complete")).toBeVisible()
+  await page.getByRole("button", { name: "REPLAY PLAYLIST" }).click()
+
+  await expect(page.getByTestId("lyrics-clue")).not.toHaveText(firstClue)
+})
+
+test("reports share success only after clipboard resolves", async ({ page }) => {
+  await mockClipboard(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-share-success",
+      runId: "lyrics-share-success-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "SHARE RESULTS" }).click()
+
+  await expect(page.getByText("Copied to clipboard!")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => (window as any).__copiedShareText)).toContain("http://127.0.0.1:3100")
+})
+
+test("reports share failure when clipboard rejects", async ({ page }) => {
+  await mockClipboard(page, true)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-share-failure",
+      runId: "lyrics-share-failure-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search title...").fill("Hidden Answer")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "SHARE RESULTS" }).click()
+
+  await expect(page.getByText("Copy failed", { exact: true })).toBeVisible()
+  await expect(page.getByText("Copied to clipboard!")).toHaveCount(0)
 })
 
 test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
