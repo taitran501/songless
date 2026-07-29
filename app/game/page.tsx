@@ -192,6 +192,7 @@ export default function GamePage() {
     solvedStageTotal,
     currentStreak,
     bestRunStreak,
+    trackResults,
     recordCorrectGuess,
     recordFailedTrack,
     resetRound,
@@ -363,7 +364,7 @@ export default function GamePage() {
     setGuesses(newGuesses)
 
     if (isCorrectGuess({ guess, target: currentTrack, selectedUri, selectedSuggestion })) {
-      recordCorrectGuess(currentStage)
+      recordCorrectGuess(currentStage, currentTrack, newGuesses)
       setModalContent({
         correct: true,
         track: currentTrack,
@@ -375,7 +376,7 @@ export default function GamePage() {
     } else if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
-      recordFailedTrack()
+      recordFailedTrack(currentTrack, newGuesses, currentStage)
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -399,7 +400,7 @@ export default function GamePage() {
     if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
-      recordFailedTrack()
+      recordFailedTrack(currentTrack, newGuesses, currentStage)
       setModalContent({
         correct: false,
         track: currentTrack,

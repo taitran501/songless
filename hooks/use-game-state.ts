@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react"
 import { clearGameSession, getGameStateStorageKey, type GameSessionMeta } from "@/lib/game-session"
-import { EMPTY_GAME_STATE, parseSavedGameState } from "@/lib/game-state"
+import {
+  appendTrackResult,
+  buildTrackRunResult,
+  EMPTY_GAME_STATE,
+  getTrackResultId,
+  parseSavedGameState,
+  type TrackRunResult,
+} from "@/lib/game-state"
 import { updateRunStreak } from "@/lib/genre-progress"
 import type { GameTrack } from "@/lib/tracks"
 
@@ -28,13 +35,18 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
   const [solvedStageTotal, setSolvedStageTotal] = useState(0)
   const [currentStreak, setCurrentStreak] = useState(0)
   const [bestRunStreak, setBestRunStreak] = useState(0)
+  const [trackResults, setTrackResults] = useState<TrackRunResult[]>([])
   const [hydratedStateKey, setHydratedStateKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (tracks.length === 0 || tracksLoading || !session) return
     const stateKey = getGameStateStorageKey(session)
     const savedState = localStorage.getItem(stateKey)
-    const parsed = parseSavedGameState(savedState, tracks.length)
+    const parsed = parseSavedGameState(
+      savedState,
+      tracks.length,
+      tracks.map(getTrackResultId)
+    )
 
     const nextState = parsed ?? EMPTY_GAME_STATE
     setCurrentIndex(nextState.currentIndex)
@@ -45,6 +57,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setSolvedStageTotal(nextState.solvedStageTotal)
     setCurrentStreak(nextState.currentStreak)
     setBestRunStreak(nextState.bestRunStreak)
+    setTrackResults(nextState.trackResults)
 
     if (savedState && !parsed) {
       localStorage.removeItem(stateKey)
@@ -67,6 +80,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
         solvedStageTotal,
         currentStreak,
         bestRunStreak,
+        trackResults,
       })
     )
   }, [
@@ -82,6 +96,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     solvedStageTotal,
     tracks.length,
     tracksLoading,
+    trackResults,
   ])
 
   const resetRound = () => {
@@ -89,8 +104,21 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setGuesses([])
   }
 
-  const recordCorrectGuess = (stage: number) => {
-    setScore((currentScore) => currentScore + (STAGE_SCORES[stage] || 0))
+  const recordCorrectGuess = (
+    stage: number,
+    track: GameTrack,
+    roundGuesses: readonly string[]
+  ) => {
+    const points = STAGE_SCORES[stage] || 0
+    const result = buildTrackRunResult({
+      trackId: getTrackResultId(track),
+      guesses: roundGuesses,
+      solved: true,
+      completedStage: stage,
+      points,
+    })
+    setTrackResults((current) => appendTrackResult(current, result))
+    setScore((currentScore) => currentScore + points)
     setCorrectCount((currentCount) => currentCount + 1)
     setSolvedStageTotal((currentTotal) => currentTotal + stage + 1)
     setCurrentStreak((current) => {
@@ -100,7 +128,19 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     })
   }
 
-  const recordFailedTrack = () => {
+  const recordFailedTrack = (
+    track: GameTrack,
+    roundGuesses: readonly string[],
+    stage: number
+  ) => {
+    const result = buildTrackRunResult({
+      trackId: getTrackResultId(track),
+      guesses: roundGuesses,
+      solved: false,
+      completedStage: stage,
+      points: 0,
+    })
+    setTrackResults((current) => appendTrackResult(current, result))
     setCurrentStreak((current) => updateRunStreak(current, bestRunStreak, false).currentStreak)
   }
 
@@ -113,6 +153,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setSolvedStageTotal(0)
     setCurrentStreak(0)
     setBestRunStreak(0)
+    setTrackResults([])
   }
 
   return {
@@ -127,6 +168,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     solvedStageTotal,
     currentStreak,
     bestRunStreak,
+    trackResults,
     recordCorrectGuess,
     recordFailedTrack,
     resetRound,
