@@ -49,8 +49,12 @@ Audio modes use six clip stages:
 4. A correct guess reveals the result and advances to the next song.
 5. In Lyrics mode, the sixth stage becomes the final clue and `Give up & reveal answer` ends the round with no points.
 
-Your progress and score are saved automatically in the browser, so an interrupted game can be continued later.
+Your progress and score are saved automatically in the browser. The homepage offers `Continue Run` when it finds a valid unfinished session and asks before replacing it with a new mode.
 Starting a new Lyrics Quick Mix remembers up to 10 recent tracks locally. Genre best scores and streaks also remain on the current device.
+
+Completing all three Daily tracks records a local UTC-day streak, personal best, and a rolling 90-day history. Replaying the same day can improve the best score but cannot increment the streak twice.
+
+Run summaries can be copied as a six-cell emoji row per track. Shared results contain mode, score, solved count, and streak only; song titles, artists, playlist identifiers, and typed guesses are excluded.
 
 Game exits are mode-aware: Daily, Lyrics, and Genre return home, while custom playlists return to Playlist Setup. Leaving a run after making progress asks for confirmation before clearing it.
 
@@ -103,6 +107,10 @@ Public Spotify playlists use server-side client credentials. Spotify OAuth and p
 | `SPOTIFY_CLIENT_ID` | For public Spotify playlists | Spotify application client ID |
 | `SPOTIFY_CLIENT_SECRET` | For public Spotify playlists | Spotify application client secret |
 | `NEXT_PUBLIC_APP_URL` | No | Canonical URL used in shared results; defaults to the current browser origin |
+| `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | No | Enables anonymous product events when used together with `NEXT_PUBLIC_POSTHOG_HOST` |
+| `NEXT_PUBLIC_POSTHOG_HOST` | No | PostHog ingest host for the configured project |
+
+PostHog is optional and disabled when either public value is missing. When enabled, Songless uses cookieless `localStorage` persistence, explicit allow-listed events, no user identification, no autocapture, and no session recording.
 
 Run the app:
 
@@ -145,7 +153,10 @@ lib/
   audio-start-detector.ts   Audio feature extraction and start detector
   game-session.ts           Session v2 validation and legacy migration
   game-navigation.ts        Mode-aware exit labels, routes, and progress checks
+  daily-progress.ts         UTC daily streak and rolling local history
   genre-progress.ts         Five-track genre runs and local progression
+  resumable-session.ts      Validated interrupted-run discovery and discard
+  analytics.ts              Optional privacy-safe PostHog event adapter
   lyrics-clues.ts           Title/artist masking and staged clue reveal
   lyrics-runs.ts            Five-track Lyrics Quick Mix and recent-track history
   youtube.ts                Playlist parsing and verified fallback matching
