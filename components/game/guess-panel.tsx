@@ -1,7 +1,7 @@
 "use client"
 
 import { Check, Loader2, Music, Search, SkipForward } from "lucide-react"
-import type { RefObject } from "react"
+import { useEffect, useRef, type RefObject } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { GameMode } from "@/lib/tracks"
@@ -47,55 +47,110 @@ export function GuessPanel({
   mode = "audio",
 }: GuessPanelProps) {
   const isLyricsMode = mode === "lyrics"
+  const actionPanelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isLyricsMode) return
+    const frame = window.requestAnimationFrame(() => {
+      actionPanelRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [currentStage, isLyricsMode])
 
   return (
     <>
-      <div className="bg-[#090d16]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-4 mb-6 space-y-2.5 ring-1 ring-white/5">
-        {Array.from({ length: 6 }).map((_, index) => {
-          const isCurrent = index === currentStage
-          const isPast = index < currentStage
-          const skipped = guesses[index] === "SKIPPED"
-          return (
-            <div
-              key={index}
-              className={`h-11 flex items-center px-4 rounded-xl border ${
-                isCurrent
-                  ? "border-[#10b981]/50 bg-[#10b981]/5 text-gray-200"
-                  : isPast
-                    ? skipped
-                      ? "border-white/5 bg-[#030712]/30 text-[#6b7280] line-through"
-                      : "border-[#ef4444]/30 bg-[#ef4444]/10 text-[#ef4444]"
-                    : "border-white/5 text-[#374151]"
-              }`}
-            >
+      {isLyricsMode ? (
+        <div
+          data-testid="lyrics-attempt-strip"
+          className="bg-[#090d16]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-3 mb-4 ring-1 ring-white/5"
+        >
+          <div className="grid grid-cols-6 gap-2">
+            {Array.from({ length: 6 }).map((_, index) => {
+              const isCurrent = index === currentStage
+              const isPast = index < currentStage
+              const skipped = guesses[index] === "SKIPPED"
+              const stateLabel = isCurrent
+                ? "current clue"
+                : isPast
+                  ? skipped
+                    ? "skipped"
+                    : `guessed ${guesses[index]}`
+                  : "locked"
+
+              return (
+                <div
+                  key={index}
+                  aria-label={`Attempt ${index + 1}: ${stateLabel}`}
+                  title={`Attempt ${index + 1}: ${stateLabel}`}
+                  className={`h-10 rounded-xl border flex items-center justify-center text-xs font-bold transition-colors ${
+                    isCurrent
+                      ? "border-[#10b981]/60 bg-[#10b981]/15 text-[#34d399] shadow-[0_0_18px_rgba(16,185,129,0.12)]"
+                      : isPast
+                        ? skipped
+                          ? "border-white/10 bg-white/[0.03] text-[#6b7280]"
+                          : "border-[#ef4444]/30 bg-[#ef4444]/10 text-[#f87171]"
+                        : "border-white/5 bg-[#030712]/30 text-[#374151]"
+                  }`}
+                >
+                  {index + 1}
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-center text-[11px] text-[#6b7280]">
+            {currentStage >= 5 ? "Final clue unlocked" : `Clue ${currentStage + 1} of 6`}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-[#090d16]/40 backdrop-blur-xl border border-white/5 rounded-2xl p-4 mb-6 space-y-2.5 ring-1 ring-white/5">
+          {Array.from({ length: 6 }).map((_, index) => {
+            const isCurrent = index === currentStage
+            const isPast = index < currentStage
+            const skipped = guesses[index] === "SKIPPED"
+            return (
               <div
-                className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] mr-3 ${
+                key={index}
+                className={`h-11 flex items-center px-4 rounded-xl border ${
                   isCurrent
-                    ? "bg-[#10b981]/20 text-[#10b981]"
+                    ? "border-[#10b981]/50 bg-[#10b981]/5 text-gray-200"
                     : isPast
                       ? skipped
-                        ? "bg-[#030712] text-[#6b7280]"
-                        : "bg-[#ef4444]/20 text-[#ef4444]"
-                      : "bg-white/5"
+                        ? "border-white/5 bg-[#030712]/30 text-[#6b7280] line-through"
+                        : "border-[#ef4444]/30 bg-[#ef4444]/10 text-[#ef4444]"
+                      : "border-white/5 text-[#374151]"
                 }`}
               >
-                {index + 1}
+                <div
+                  className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] mr-3 ${
+                    isCurrent
+                      ? "bg-[#10b981]/20 text-[#10b981]"
+                      : isPast
+                        ? skipped
+                          ? "bg-[#030712] text-[#6b7280]"
+                          : "bg-[#ef4444]/20 text-[#ef4444]"
+                        : "bg-white/5"
+                  }`}
+                >
+                  {index + 1}
+                </div>
+                {isPast ? (
+                  <span>{guesses[index]}</span>
+                ) : isCurrent ? (
+                  <span className="animate-pulse text-[#6b7280]">Listening window unlocked...</span>
+                ) : (
+                  <span>Locked</span>
+                )}
               </div>
-              {isPast ? (
-                <span>{guesses[index]}</span>
-              ) : isCurrent ? (
-                <span className="animate-pulse text-[#6b7280]">
-                  {isLyricsMode ? "Lyric clue unlocked..." : "Listening window unlocked..."}
-                </span>
-              ) : (
-                <span>Locked</span>
-              )}
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
-      <div className="space-y-4">
+      <div
+        ref={actionPanelRef}
+        data-testid="guess-action-panel"
+        className={`space-y-4 ${isLyricsMode ? "sticky bottom-3 z-20 rounded-2xl border border-white/10 bg-[#060a13]/95 p-3 shadow-2xl backdrop-blur-xl" : ""}`}
+      >
         <div ref={searchContainerRef} className="relative">
           <Input
             type="text"
@@ -117,7 +172,7 @@ export function GuessPanel({
                 <button
                   key={suggestion.uri}
                   onClick={() => onSelectSuggestion(suggestion)}
-                  className="w-full text-left px-4 py-3 hover:bg-white/5 flex items-center space-x-3"
+                  className="w-full cursor-pointer text-left px-4 py-3 hover:bg-white/5 flex items-center space-x-3"
                 >
                   {suggestion.albumImage ? (
                     <img src={suggestion.albumImage} className="w-10 h-10 rounded-lg object-cover" alt="" />
@@ -145,7 +200,7 @@ export function GuessPanel({
           <Button onClick={onSkip} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
             <SkipForward className="w-4 h-4 mr-2" />
             {isLyricsMode
-              ? currentStage === 5 ? "SKIP (+0)" : "REVEAL NEXT CLUE"
+              ? currentStage === 5 ? "GIVE UP & REVEAL ANSWER" : "REVEAL NEXT CLUE"
               : `SKIP (+${currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)`}
           </Button>
           <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={!guess.trim()}>

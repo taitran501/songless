@@ -252,7 +252,7 @@ test("shows playlist mode and lets the user return home", async ({ page }) => {
   await page.getByRole("button", { name: "Home" }).click()
 
   await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole("button", { name: "Start Daily Challenge" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Start Today's Challenge" })).toBeVisible()
 })
 
 test("loads YouTube playlist tracks and enables the start-game state", async ({ page }) => {
@@ -293,7 +293,7 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Play as Guest" }).click()
+  await page.getByRole("button", { name: "Open Playlist Setup" }).click()
   await expect(page.getByText("Guest mode is active")).toBeVisible()
 
   await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
@@ -313,11 +313,11 @@ test("starts the daily challenge as a three-track audio game", async ({ page }) 
   await mockYouTubeIframe(page)
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Start Daily Challenge" }).click()
+  await page.getByRole("button", { name: "Start Today's Challenge" }).click()
 
   await expect(page.getByText("Track 1 of 3")).toBeVisible()
   await expect(page.getByText("Mode: Daily Challenge")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "Exit to Home" })).toBeVisible()
   await expect(page.getByLabel("Play preview")).toBeVisible()
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -348,7 +348,7 @@ test("keeps daily challenge progress in a daily-specific state key", async ({ pa
   await mockYouTubeIframe(page)
 
   await page.goto("/")
-  await page.getByRole("button", { name: "Start Daily Challenge" }).click()
+  await page.getByRole("button", { name: "Start Today's Challenge" }).click()
   await expect(page.getByText("Track 1 of 3")).toBeVisible()
 
   await page.getByRole("button", { name: /SKIP/ }).click()
@@ -423,12 +423,12 @@ test("runs five genre tracks and persists local progression", async ({ page }) =
 
 test("plays partial lyrics mode without audio controls", async ({ page }) => {
   await page.goto("/")
-  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
 
-  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+  await expect(page.getByText("Partial Lyrics Mode", { exact: true })).toBeVisible()
   await expect(page.getByText("Mode: Partial Lyrics Mode")).toBeVisible()
-  await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
-  await expect(page.getByText("Track 1 of")).toBeVisible()
+  await expect(page.getByRole("button", { name: "Exit to Home" })).toBeVisible()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
   await expect(page.getByLabel("Play preview")).toHaveCount(0)
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -440,8 +440,8 @@ test("plays partial lyrics mode without audio controls", async ({ page }) => {
 
 test("reveals another lyrics clue after a wrong guess", async ({ page }) => {
   await page.goto("/")
-  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
-  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+  await expect(page.getByText("Partial Lyrics Mode", { exact: true })).toBeVisible()
 
   await page.getByPlaceholder("Know the song? Search title...").fill("wrong song")
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
@@ -451,10 +451,14 @@ test("reveals another lyrics clue after a wrong guess", async ({ page }) => {
 
 test("accepts a correct partial lyrics guess", async ({ page }) => {
   await page.goto("/")
-  await page.getByRole("button", { name: "Start Lyrics Mode" }).click()
-  await expect(page.getByText("Partial Lyrics Mode")).toBeVisible()
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+  await expect(page.getByText("Partial Lyrics Mode", { exact: true })).toBeVisible()
 
-  await page.getByPlaceholder("Know the song? Search title...").fill("Hay Trao Cho Anh")
+  const currentTrackName = await page.evaluate(() => {
+    const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+    return tracks[0].name
+  })
+  await page.getByPlaceholder("Know the song? Search title...").fill(currentTrackName)
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
 
   await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
@@ -480,9 +484,179 @@ test("keeps a lyrics clue on refresh and rotates it on replay", async ({ page })
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
   await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
   await expect(page.getByText("Lyrics Complete")).toBeVisible()
-  await page.getByRole("button", { name: "REPLAY PLAYLIST" }).click()
+  await page.getByRole("button", { name: "PLAY ANOTHER 5" }).click()
 
   await expect(page.getByTestId("lyrics-clue")).not.toHaveText(firstClue)
+})
+
+test("keeps a five-song lyrics run on refresh and changes its order on replay", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+
+  const firstRun = await page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+    return {
+      runId: session.runId,
+      order: tracks.map((track: any) => track.challengeId || track.uri),
+      clue: document.querySelector('[data-testid="lyrics-clue"]')?.textContent,
+    }
+  })
+
+  await page.reload()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByTestId("lyrics-clue")).toHaveText(firstRun.clue || "")
+
+  const finalTrackName = await page.evaluate(({ runId }) => {
+    const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+    window.localStorage.setItem(
+      `songless_state_${runId}`,
+      JSON.stringify({
+        currentIndex: 4,
+        currentStage: 0,
+        guesses: [],
+        score: 0,
+        correctCount: 0,
+        solvedStageTotal: 0,
+        currentStreak: 0,
+        bestRunStreak: 0,
+      })
+    )
+    return tracks[4].name
+  }, firstRun)
+  await page.reload()
+  await expect(page.getByText("Track 5 of 5")).toBeVisible()
+  await page.getByPlaceholder("Know the song? Search title...").fill(finalTrackName)
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
+  await page.getByRole("button", { name: "PLAY ANOTHER 5" }).click()
+
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+      return tracks.map((track: any) => track.challengeId || track.uri)
+    })
+  }).not.toEqual(firstRun.order)
+})
+
+test("shows an actionable final lyrics clue inside a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-final-clue",
+      runId: "lyrics-final-clue-run",
+    }),
+  })
+
+  await page.goto("/game")
+  for (let stage = 0; stage < 5; stage++) {
+    await page.getByRole("button", { name: "REVEAL NEXT CLUE" }).click()
+  }
+
+  await expect(page.getByText("Final clue", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("final-clue-metadata")).toContainText("Secret Singer")
+  await expect(page.getByTestId("final-clue-metadata")).toContainText("VPOP")
+  await expect(page.getByTestId("lyrics-clue-panel")).toBeInViewport()
+  await expect(page.getByPlaceholder("Know the song? Search title...")).toBeInViewport()
+  await expect(page.getByRole("button", { name: "GIVE UP & REVEAL ANSWER" })).toBeInViewport()
+
+  await page.getByRole("button", { name: "GIVE UP & REVEAL ANSWER" }).click()
+  await expect(page.getByRole("heading", { name: /game over/i })).toBeVisible()
+})
+
+test("confirms discarding a started run and preserves it on cancel", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+  await page.getByRole("button", { name: "REVEAL NEXT CLUE" }).click()
+
+  await page.getByRole("button", { name: "Exit to Home" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText("Exit and discard this run?")
+  await page.getByRole("button", { name: "Cancel" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+
+  await page.getByRole("button", { name: "Exit to Home" }).click()
+  await page.getByRole("button", { name: "Exit and discard" }).click()
+  await expect(page).toHaveURL(/\/$/)
+  await expect.poll(async () =>
+    page.evaluate(() => window.localStorage.getItem("songless_session_v2"))
+  ).toBeNull()
+})
+
+test("routes an untouched playlist run back to playlist setup without confirmation", async ({ page }) => {
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "playlist-navigation",
+      runId: "playlist-navigation-run",
+      playlistSource: "spotify",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByRole("button", { name: "Back to Playlist Setup" }).click()
+  await expect(page).toHaveURL(/\/playlist$/)
+  await expect(page.getByRole("alertdialog")).toHaveCount(0)
+})
+
+test("allows selecting clue text and shows pointer cursor on actions", async ({ page }) => {
+  await page.goto("/")
+  const startButton = page.getByRole("button", { name: "Start Lyrics Quick Mix" })
+  await expect(startButton).toHaveCSS("cursor", "pointer")
+  await startButton.click()
+
+  const clue = page.getByTestId("lyrics-clue")
+  await clue.scrollIntoViewIfNeeded()
+  const box = await clue.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + 4, box!.y + 6)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width - 4, box!.y + box!.height - 6, { steps: 12 })
+  await page.mouse.up()
+
+  await expect.poll(async () =>
+    page.evaluate(() => window.getSelection()?.toString().trim().length || 0)
+  ).toBeGreaterThan(0)
+  await expect(page.getByRole("button", { name: "REVEAL NEXT CLUE" })).toHaveCSS("cursor", "pointer")
+})
+
+test("keeps the homepage hierarchy responsive without horizontal overflow", async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport)
+    await page.goto("/")
+
+    await expect(page.getByTestId("home-daily-card")).toBeVisible()
+    const cards = page.getByTestId("home-mode-card")
+    await expect(cards).toHaveCount(3)
+    await expect.poll(async () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+    ).toBe(true)
+
+    const boxes = await cards.evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width) }
+      })
+    )
+    if (viewport.width >= 1024) {
+      expect(new Set(boxes.map((box) => box.y)).size).toBe(1)
+      expect(new Set(boxes.map((box) => box.x)).size).toBe(3)
+    } else {
+      expect(new Set(boxes.map((box) => box.x)).size).toBe(1)
+      expect(boxes[0].y).toBeLessThan(boxes[1].y)
+      expect(boxes[1].y).toBeLessThan(boxes[2].y)
+    }
+  }
 })
 
 test("reports share success only after clipboard resolves", async ({ page }) => {
@@ -815,5 +989,7 @@ test("supports the main game controls with mocked audio playback", async ({ page
   await expect(page.getByText("180")).toBeVisible()
   await expect(page.getByText("2 / 2")).toBeVisible()
   await expect(page.getByRole("button", { name: "REPLAY PLAYLIST" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "LOAD ANOTHER" })).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "BACK TO PLAYLIST SETUP", exact: true }).last()
+  ).toBeVisible()
 })
