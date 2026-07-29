@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Trophy, X } from "lucide-react"
+import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Share2, Trophy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   AlertDialog,
@@ -52,6 +52,11 @@ import {
   rememberLyricsRun,
   selectLyricsRunTracks,
 } from "@/lib/lyrics-runs"
+import {
+  buildRunShareText,
+  copyShareText,
+  resolveShareUrl,
+} from "@/lib/sharing"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
@@ -523,6 +528,39 @@ export default function GamePage() {
     router.push(navigation.secondaryRoute)
   }
 
+  const handleShareRun = async () => {
+    if (!session) return
+
+    try {
+      const appUrl = resolveShareUrl(
+        process.env.NEXT_PUBLIC_APP_URL,
+        window.location.origin
+      )
+      const shareText = buildRunShareText({
+        kind: session.kind,
+        dateKey: session.dateKey,
+        score,
+        solved: correctCount,
+        totalTracks: tracks.length,
+        bestRunStreak,
+        results: trackResults,
+        appUrl,
+      })
+      await copyShareText(navigator.clipboard, shareText)
+      toast({
+        title: "Run copied!",
+        description: "Your complete result is ready to share.",
+      })
+    } catch (error) {
+      console.error("Failed to copy run result:", error)
+      toast({
+        title: "Copy failed",
+        description: "Clipboard access failed. Try sharing the run again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handlePlay = async () => {
     const started = await playback.playSegment()
     if (!started) {
@@ -674,7 +712,15 @@ export default function GamePage() {
             })()}
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => void handleShareRun()}
+              className="h-12 w-full rounded-xl bg-[#10b981] font-bold text-black hover:bg-[#34d399]"
+            >
+              <Share2 className="mr-2 h-4 w-4" />
+              SHARE RUN
+            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row">
             <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
               <RotateCcw className="w-4 h-4 mr-2" />
               {navigation.replayLabel}
@@ -682,6 +728,7 @@ export default function GamePage() {
             <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
               {navigation.secondaryLabel}
             </Button>
+            </div>
           </div>
         </div>
       </div>
