@@ -83,7 +83,7 @@ export function GameModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center select-none outline-none [&_[data-slot=dialog-close]]:text-white [&_[data-slot=dialog-close]]:opacity-90 ${
+      <DialogContent className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center outline-none [&_[data-slot=dialog-close]]:text-white [&_[data-slot=dialog-close]]:opacity-90 ${
         correct
           ? "bg-[#090d16]/90 border-[#10b981] shadow-[0_0_25px_rgba(16,185,129,0.3),inset_0_0_15px_rgba(16,185,129,0.1)]"
           : "bg-[#090d16]/90 border-[#ef4444] shadow-[0_0_25px_rgba(239,68,68,0.3),inset_0_0_15px_rgba(239,68,68,0.1)]"
@@ -109,13 +109,13 @@ export function GameModal({
         </div>
 
         {/* Song Metadata */}
-        <div className="text-center mb-5 w-full px-4">
+        <div className="text-center mb-5 w-full px-4 select-text">
           <h2 className="font-sans text-lg sm:text-xl text-white mb-1 font-bold truncate">{track?.name || "Unknown Track"}</h2>
           <p className="font-sans text-sm text-[#9ca3af] truncate">{track?.artists || "Unknown Artist"}</p>
         </div>
 
         {/* Stat Summary Grid */}
-        <div className="w-full grid grid-cols-2 gap-3 mb-5">
+        <div className="w-full grid grid-cols-2 gap-3 mb-5 select-text">
           <div className="bg-white/[0.03] rounded-lg border border-white/10 p-3 text-center">
             <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Guesses Used</p>
             <p className={`text-xl font-bold ${correct ? "text-[#10b981]" : "text-[#ef4444]"}`}>
@@ -159,7 +159,7 @@ export function GameModal({
           {onBack && (
             <button
               onClick={onBack}
-              className="w-full text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center"
+              className="w-full cursor-pointer text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center"
             >
               {backLabel}
             </button>

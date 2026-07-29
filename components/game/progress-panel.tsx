@@ -29,7 +29,7 @@ export function ProgressPanel({
 
   return (
     <>
-      <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
+      <div className="select-none bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="text-center sm:text-left">
             <span className="font-display text-xs font-semibold text-[#10b981] uppercase tracking-widest">Playlist Progress</span>
@@ -62,7 +62,7 @@ export function ProgressPanel({
         </div>
       </div>
 
-      <div className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
+      <div className="select-none bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
         <div className="relative mb-2 pt-8">
           {/* Floating current duration indicator */}
           <div 

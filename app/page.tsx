@@ -82,7 +82,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col font-sans relative overflow-hidden select-none">
+    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col font-sans relative overflow-hidden">
       {/* Ambient glows — same as playlist/game pages */}
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />

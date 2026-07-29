@@ -172,7 +172,7 @@ export function GuessPanel({
                 <button
                   key={suggestion.uri}
                   onClick={() => onSelectSuggestion(suggestion)}
-                  className="w-full text-left px-4 py-3 hover:bg-white/5 flex items-center space-x-3"
+                  className="w-full cursor-pointer text-left px-4 py-3 hover:bg-white/5 flex items-center space-x-3"
                 >
                   {suggestion.albumImage ? (
                     <img src={suggestion.albumImage} className="w-10 h-10 rounded-lg object-cover" alt="" />

@@ -14,7 +14,7 @@ export function LyricsCluePanel({ track, currentStage, snippetIndex = 0 }: Lyric
   const isFinalClue = currentStage >= 5
 
   return (
-    <div data-testid="lyrics-clue-panel" className="bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
+    <div data-testid="lyrics-clue-panel" className="select-text bg-[#090d16]/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-6 ring-1 ring-white/5 shadow-2xl">
       <div className="flex items-center gap-3 mb-4">
         <div className="w-10 h-10 rounded-xl bg-[#10b981]/10 border border-[#10b981]/25 flex items-center justify-center">
           <Quote className="w-5 h-5 text-[#10b981]" />

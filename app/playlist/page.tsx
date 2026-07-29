@@ -153,7 +153,7 @@ export default function PlaylistPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col relative overflow-hidden font-sans p-4 sm:p-6 md:p-8 select-none">
+    <div className="min-h-screen bg-[#020617] text-[#dce5d9] flex flex-col relative overflow-hidden font-sans p-4 sm:p-6 md:p-8">
       {/* Ambient background glows */}
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[60%] rounded-full bg-[#10b981]/5 blur-[150px] pointer-events-none" />
@@ -277,7 +277,7 @@ export default function PlaylistPage() {
                           setPlaylistInput(p.id)
                           void loadPlaylistById(p.id)
                         }}
-                        className="flex items-center space-x-3 flex-1 text-left min-w-0 disabled:opacity-50"
+                        className="flex cursor-pointer items-center space-x-3 flex-1 text-left min-w-0 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={loading}
                       >
                         <div className={`p-2 rounded-lg shrink-0 transition-colors ${
