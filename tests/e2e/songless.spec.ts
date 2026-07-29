@@ -462,13 +462,13 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   await expect(page.getByText("2 / 6")).toBeVisible()
 })
 
-test("starts the daily challenge as a five-track audio game", async ({ page }) => {
+test("starts the daily challenge as a three-track audio game", async ({ page }) => {
   await mockYouTubeIframe(page)
 
   await page.goto("/")
   await page.getByRole("button", { name: "Start Daily Challenge" }).click()
 
-  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Track 1 of 3")).toBeVisible()
   await expect(page.getByText("Mode: Daily Challenge")).toBeVisible()
   await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByLabel("Play preview")).toBeVisible()
@@ -477,7 +477,16 @@ test("starts the daily challenge as a five-track audio game", async ({ page }) =
   await expect.poll(async () => {
     return page.evaluate(() => {
       const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
-      return tracks.length === 5 && tracks.every((track: any) => track.audioAnalysisStatus === "approved" && typeof track.audioStartSeconds === "number")
+      const genres = tracks.map((track: any) => track.genre).sort()
+      return (
+        tracks.length === 3 &&
+        genres.join(",") === "rap,usuk,vpop" &&
+        tracks.every(
+          (track: any) =>
+            track.audioAnalysisStatus === "approved" &&
+            typeof track.audioStartSeconds === "number"
+        )
+      )
     })
   }).toBe(true)
 })
@@ -487,7 +496,7 @@ test("keeps daily challenge progress in a daily-specific state key", async ({ pa
 
   await page.goto("/")
   await page.getByRole("button", { name: "Start Daily Challenge" }).click()
-  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Track 1 of 3")).toBeVisible()
 
   await page.getByRole("button", { name: /SKIP/ }).click()
 
