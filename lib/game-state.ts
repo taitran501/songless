@@ -7,6 +7,8 @@ export const savedGameStateSchema = z.object({
   score: z.number().int().nonnegative(),
   correctCount: z.number().int().nonnegative(),
   solvedStageTotal: z.number().int().nonnegative(),
+  currentStreak: z.number().int().nonnegative().default(0),
+  bestRunStreak: z.number().int().nonnegative().default(0),
 })
 
 export type SavedGameState = z.infer<typeof savedGameStateSchema>
@@ -18,6 +20,8 @@ export const EMPTY_GAME_STATE: SavedGameState = {
   score: 0,
   correctCount: 0,
   solvedStageTotal: 0,
+  currentStreak: 0,
+  bestRunStreak: 0,
 }
 
 export function parseSavedGameState(raw: string | null, trackCount: number): SavedGameState | null {

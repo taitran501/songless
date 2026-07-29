@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { CalendarDays, FileText, Music, Youtube } from "lucide-react"
+import { CalendarDays, FileText, Headphones, Music, Youtube } from "lucide-react"
 import { useTracks } from "@/hooks/tracks-store"
 import {
   getLyricsModeTracks,
@@ -10,6 +10,14 @@ import {
   selectDailyTracks,
 } from "@/lib/curated-tracks"
 import { createGameSession, writeGameSession } from "@/lib/game-session"
+import { selectGenrePracticeTracks } from "@/lib/genre-progress"
+import type { TrackGenre } from "@/lib/tracks"
+
+const GENRE_LABELS: Record<TrackGenre, string> = {
+  vpop: "VPop",
+  usuk: "USUK",
+  rap: "Rap",
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -49,6 +57,21 @@ export default function LoginPage() {
         id: "lyrics-curated-v1",
       })
     )
+    router.push("/game")
+  }
+
+  const startGenrePractice = (genre: TrackGenre) => {
+    const session = createGameSession({
+      kind: "genre",
+      playbackMode: "audio",
+      id: `genre-${genre}`,
+      genre,
+    })
+    const tracks = selectGenrePracticeTracks(genre, session.runId)
+
+    setTracks(tracks)
+    localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
+    writeGameSession(localStorage, session)
     router.push("/game")
   }
 
@@ -149,6 +172,36 @@ export default function LoginPage() {
             >
               Play as Guest
             </Button>
+          </div>
+
+          <div className="md:col-span-2 bg-[#090d16]/60 backdrop-blur-xl border border-cyan-400/15 hover:border-cyan-300/30 rounded-2xl p-7 transition-all duration-300 relative group overflow-hidden shadow-2xl ring-1 ring-white/5">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-400/[0.03] via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="w-14 h-14 shrink-0 rounded-2xl bg-cyan-400/10 border border-cyan-300/20 flex items-center justify-center">
+                  <Headphones className="w-7 h-7 text-cyan-300" />
+                </div>
+                <div>
+                  <span className="text-[10px] text-cyan-300 font-semibold uppercase tracking-widest font-display">5 Songs Per Run</span>
+                  <h2 className="font-display text-xl font-bold text-white mt-1 mb-2">Practice by Genre</h2>
+                  <p className="text-[#6b7280] text-sm leading-relaxed">
+                    Build a local streak and beat your best score in one genre.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 sm:min-w-72">
+                {(["vpop", "usuk", "rap"] as TrackGenre[]).map((genre) => (
+                  <Button
+                    key={genre}
+                    onClick={() => startGenrePractice(genre)}
+                    variant="outline"
+                    className="bg-transparent border-cyan-300/20 hover:bg-cyan-300/10 text-[#dce5d9] font-semibold rounded-xl"
+                  >
+                    {GENRE_LABELS[genre]}
+                  </Button>
+                ))}
+              </div>
+            </div>
           </div>
 
         </div>

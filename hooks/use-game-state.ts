@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { clearGameSession, getGameStateStorageKey, type GameSessionMeta } from "@/lib/game-session"
 import { EMPTY_GAME_STATE, parseSavedGameState } from "@/lib/game-state"
+import { updateRunStreak } from "@/lib/genre-progress"
 import type { GameTrack } from "@/lib/tracks"
 
 export const STAGE_DURATIONS = [500, 1000, 2000, 4000, 8000, 15000] as const
@@ -25,6 +26,8 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
   const [score, setScore] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
   const [solvedStageTotal, setSolvedStageTotal] = useState(0)
+  const [currentStreak, setCurrentStreak] = useState(0)
+  const [bestRunStreak, setBestRunStreak] = useState(0)
   const [hydratedStateKey, setHydratedStateKey] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,6 +43,8 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setScore(nextState.score)
     setCorrectCount(nextState.correctCount)
     setSolvedStageTotal(nextState.solvedStageTotal)
+    setCurrentStreak(nextState.currentStreak)
+    setBestRunStreak(nextState.bestRunStreak)
 
     if (savedState && !parsed) {
       localStorage.removeItem(stateKey)
@@ -53,14 +58,25 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     if (hydratedStateKey !== stateKey) return
     localStorage.setItem(
       stateKey,
-      JSON.stringify({ currentIndex, currentStage, guesses, score, correctCount, solvedStageTotal })
+      JSON.stringify({
+        currentIndex,
+        currentStage,
+        guesses,
+        score,
+        correctCount,
+        solvedStageTotal,
+        currentStreak,
+        bestRunStreak,
+      })
     )
   }, [
     correctCount,
+    currentStreak,
     currentIndex,
     currentStage,
     guesses,
     hydratedStateKey,
+    bestRunStreak,
     score,
     session,
     solvedStageTotal,
@@ -77,6 +93,15 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setScore((currentScore) => currentScore + (STAGE_SCORES[stage] || 0))
     setCorrectCount((currentCount) => currentCount + 1)
     setSolvedStageTotal((currentTotal) => currentTotal + stage + 1)
+    setCurrentStreak((current) => {
+      const next = updateRunStreak(current, bestRunStreak, true)
+      setBestRunStreak(next.bestRunStreak)
+      return next.currentStreak
+    })
+  }
+
+  const recordFailedTrack = () => {
+    setCurrentStreak((current) => updateRunStreak(current, bestRunStreak, false).currentStreak)
   }
 
   const resetGame = () => {
@@ -86,6 +111,8 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     setScore(0)
     setCorrectCount(0)
     setSolvedStageTotal(0)
+    setCurrentStreak(0)
+    setBestRunStreak(0)
   }
 
   return {
@@ -98,7 +125,10 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     score,
     correctCount,
     solvedStageTotal,
+    currentStreak,
+    bestRunStreak,
     recordCorrectGuess,
+    recordFailedTrack,
     resetRound,
     resetGame,
     stageDurations: STAGE_DURATIONS,

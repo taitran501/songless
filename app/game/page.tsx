@@ -15,10 +15,18 @@ import { useTracks } from "@/hooks/tracks-store"
 import { useToast } from "@/hooks/use-toast"
 import {
   createRunId,
+  isGenreSession,
   readGameSession,
   writeGameSession,
   type GameSessionMeta,
 } from "@/lib/game-session"
+import {
+  completeGenreRun,
+  EMPTY_GENRE_PROGRESS,
+  readGenreProgress,
+  selectGenrePracticeTracks,
+  type GenreProgressRecord,
+} from "@/lib/genre-progress"
 import { isCorrectGuess } from "@/lib/guessing"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
 import type { GameMode, GameTrack } from "@/lib/tracks"
@@ -87,10 +95,27 @@ function createReplayRunId(session: GameSessionMeta, firstTrack?: GameTrack) {
   return createRunId("replay")
 }
 
+function createGenreReplay(
+  session: GameSessionMeta & { kind: "genre"; genre: NonNullable<GameSessionMeta["genre"]> },
+  currentTracks: GameTrack[]
+) {
+  const currentOrder = currentTracks.map((track) => track.uri).join("|")
+  for (let attempt = 1; attempt <= 100; attempt++) {
+    const runId = `${session.runId}-replay-${attempt}`
+    const tracks = selectGenrePracticeTracks(session.genre, runId)
+    if (tracks.map((track) => track.uri).join("|") !== currentOrder) {
+      return { runId, tracks }
+    }
+  }
+
+  const runId = createRunId("genre-replay")
+  return { runId, tracks: selectGenrePracticeTracks(session.genre, runId) }
+}
+
 export default function GamePage() {
   const router = useRouter()
   const { toast } = useToast()
-  const { tracks, isLoading: tracksLoading } = useTracks()
+  const { tracks, setTracks, isLoading: tracksLoading } = useTracks()
   const [isLoading, setIsLoading] = useState(true)
   const [guess, setGuess] = useState("")
   const [showModal, setShowModal] = useState(false)
@@ -109,6 +134,7 @@ export default function GamePage() {
   const [playlistComplete, setPlaylistComplete] = useState(false)
   const [session, setSession] = useState<GameSessionMeta | null>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
+  const [genreProgress, setGenreProgress] = useState<GenreProgressRecord>(EMPTY_GENRE_PROGRESS)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const gameMode: GameMode = session?.playbackMode ?? "audio"
   const dailyDate = session?.dateKey ?? null
@@ -124,7 +150,10 @@ export default function GamePage() {
     score,
     correctCount,
     solvedStageTotal,
+    currentStreak,
+    bestRunStreak,
     recordCorrectGuess,
+    recordFailedTrack,
     resetRound,
     resetGame,
     stageDurations,
@@ -140,7 +169,11 @@ export default function GamePage() {
   })
 
   useEffect(() => {
-    setSession(readGameSession(localStorage))
+    const nextSession = readGameSession(localStorage)
+    setSession(nextSession)
+    if (isGenreSession(nextSession)) {
+      setGenreProgress(readGenreProgress(localStorage, nextSession.genre))
+    }
     setSessionLoaded(true)
   }, [])
 
@@ -301,6 +334,7 @@ export default function GamePage() {
     } else if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
+      recordFailedTrack()
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -324,6 +358,7 @@ export default function GamePage() {
     if (currentStage < 5) {
       setCurrentStage(currentStage + 1)
     } else {
+      recordFailedTrack()
       setModalContent({
         correct: false,
         track: currentTrack,
@@ -351,6 +386,15 @@ export default function GamePage() {
 
     window.setTimeout(() => {
       resetRound()
+      if (isGenreSession(session)) {
+        setGenreProgress(
+          completeGenreRun(localStorage, session.genre, {
+            score,
+            bestStreak: bestRunStreak,
+            solved: correctCount,
+          })
+        )
+      }
       setPlaylistComplete(true)
     }, 220)
   }
@@ -370,10 +414,15 @@ export default function GamePage() {
   const handleReplayPlaylist = async () => {
     await stopRoundPlayback()
     if (session) {
+      const genreReplay = isGenreSession(session) ? createGenreReplay(session, tracks) : null
+      const runId = genreReplay?.runId ?? createReplayRunId(session, tracks[0])
       const nextSession = writeGameSession(localStorage, {
         ...session,
-        runId: createReplayRunId(session, tracks[0]),
+        runId,
       })
+      if (genreReplay) {
+        setTracks(genreReplay.tracks)
+      }
       setSession(nextSession)
     }
     resetGame()
@@ -383,7 +432,7 @@ export default function GamePage() {
   const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
     clearSavedGame(session)
-    router.push("/playlist")
+    router.push(isGenreSession(session) ? "/" : "/playlist")
   }
 
   const handlePlay = async () => {
@@ -421,8 +470,20 @@ export default function GamePage() {
     const averageStage = correctCount > 0 ? (solvedStageTotal / correctCount).toFixed(1) : "-"
     const maxScore = tracks.length * stageScores[0]
     const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
-    const completeLabel = dailyDate ? "Daily Complete" : isLyricsMode ? "Lyrics Complete" : "Playlist Complete"
-    const completeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
+    const completeLabel = dailyDate
+      ? "Daily Complete"
+      : isGenreSession(session)
+        ? "Genre Practice Complete"
+        : isLyricsMode
+          ? "Lyrics Complete"
+          : "Playlist Complete"
+    const completeModeLabel = dailyDate
+      ? "Daily Challenge"
+      : isGenreSession(session)
+        ? `${session.genre.toUpperCase()} Practice`
+        : isLyricsMode
+          ? "Partial Lyrics Mode"
+          : "Audio Playlist Mode"
 
     return (
       <div
@@ -477,6 +538,19 @@ export default function GamePage() {
               <p className="text-2xl font-extrabold text-white">{accuracy}%</p>
             </div>
 
+            {isGenreSession(session) && (
+              <>
+                <div className="bg-cyan-400/[0.06] border border-cyan-300/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-semibold">Run Streak</p>
+                  <p className="text-2xl font-extrabold text-white">{bestRunStreak}</p>
+                </div>
+                <div className="bg-cyan-400/[0.06] border border-cyan-300/15 rounded-xl p-4 text-center">
+                  <p className="text-[10px] text-cyan-300 uppercase tracking-wide font-semibold">Best Score</p>
+                  <p className="text-2xl font-extrabold text-white">{genreProgress.bestScore}</p>
+                </div>
+              </>
+            )}
+
             {/* Average clip heard — how quickly they got it on average */}
             {correctCount > 0 && (() => {
               const STAGE_DURATIONS_S = [0.5, 1, 2, 4, 8, 15]
@@ -502,10 +576,10 @@ export default function GamePage() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
               <RotateCcw className="w-4 h-4 mr-2" />
-              REPLAY PLAYLIST
+              {isGenreSession(session) ? "REPLAY GENRE" : "REPLAY PLAYLIST"}
             </Button>
             <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
-              LOAD ANOTHER
+              {isGenreSession(session) ? "CHOOSE ANOTHER" : "LOAD ANOTHER"}
             </Button>
           </div>
         </div>
@@ -517,8 +591,20 @@ export default function GamePage() {
     return null
   }
 
-  const activeModeLabel = dailyDate ? "Daily Challenge" : isLyricsMode ? "Partial Lyrics Mode" : "Audio Playlist Mode"
-  const activeModeDetail = dailyDate ? dailyDate : isLyricsMode ? "Lyrics clues" : "Audio clips"
+  const activeModeLabel = dailyDate
+    ? "Daily Challenge"
+    : isGenreSession(session)
+      ? `${session.genre.toUpperCase()} Practice`
+      : isLyricsMode
+        ? "Partial Lyrics Mode"
+        : "Audio Playlist Mode"
+  const activeModeDetail = dailyDate
+    ? dailyDate
+    : isGenreSession(session)
+      ? `${currentStreak} current streak`
+      : isLyricsMode
+        ? "Lyrics clues"
+        : "Audio clips"
 
   return (
     <div

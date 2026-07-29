@@ -89,6 +89,8 @@ describe("saved game state validation", () => {
     score: 80,
     correctCount: 1,
     solvedStageTotal: 2,
+    currentStreak: 1,
+    bestRunStreak: 1,
   }
 
   it("accepts valid in-range state", () => {
