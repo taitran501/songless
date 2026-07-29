@@ -2,9 +2,6 @@ import { CURATED_SONG_SEEDS, type CuratedSongSeed } from "@/lib/curated-song-see
 import { CURATED_TRACK_ANALYSIS, type CuratedTrackAnalysis } from "@/lib/curated-track-analysis"
 import type { GameTrack, TrackGenre } from "@/lib/tracks"
 
-export const GAME_MODE_STORAGE_KEY = "songless_game_mode"
-export const DAILY_DATE_STORAGE_KEY = "songless_daily_date"
-
 export const DAILY_GENRE_TARGETS: Record<TrackGenre, number> = {
   usuk: 1,
   vpop: 1,

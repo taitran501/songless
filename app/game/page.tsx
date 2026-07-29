@@ -13,8 +13,14 @@ import { clearSavedGame, useGameState } from "@/hooks/use-game-state"
 import { useAudioPlayback } from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
 import { useToast } from "@/hooks/use-toast"
-import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
+import {
+  createRunId,
+  readGameSession,
+  writeGameSession,
+  type GameSessionMeta,
+} from "@/lib/game-session"
 import { isCorrectGuess } from "@/lib/guessing"
+import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
@@ -70,6 +76,17 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
     .map((item) => item.suggestion)
 }
 
+function createReplayRunId(session: GameSessionMeta, firstTrack?: GameTrack) {
+  if (session.playbackMode !== "lyrics" || !firstTrack) return createRunId("replay")
+
+  const currentSnippet = selectLyricsSnippetIndex(firstTrack, session.runId)
+  for (let attempt = 1; attempt <= 100; attempt++) {
+    const candidate = `${session.runId}-replay-${attempt}`
+    if (selectLyricsSnippetIndex(firstTrack, candidate) !== currentSnippet) return candidate
+  }
+  return createRunId("replay")
+}
+
 export default function GamePage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -90,15 +107,11 @@ export default function GamePage() {
   const [selectedUri, setSelectedUri] = useState<string | null>(null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<GuessSuggestion | null>(null)
   const [playlistComplete, setPlaylistComplete] = useState(false)
-  const [gameMode, setGameMode] = useState<GameMode>(() => {
-    if (typeof window === "undefined") return "audio"
-    return localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio"
-  })
-  const [dailyDate, setDailyDate] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null
-    return localStorage.getItem(DAILY_DATE_STORAGE_KEY)
-  })
+  const [session, setSession] = useState<GameSessionMeta | null>(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const gameMode: GameMode = session?.playbackMode ?? "audio"
+  const dailyDate = session?.dateKey ?? null
   const isLyricsMode = gameMode === "lyrics"
 
   const {
@@ -116,7 +129,7 @@ export default function GamePage() {
     resetGame,
     stageDurations,
     stageScores,
-  } = useGameState({ tracks, tracksLoading })
+  } = useGameState({ tracks, tracksLoading, session })
 
   const currentTrack = tracks[currentIndex]
 
@@ -127,18 +140,18 @@ export default function GamePage() {
   })
 
   useEffect(() => {
-    setGameMode(localStorage.getItem(GAME_MODE_STORAGE_KEY) === "lyrics" ? "lyrics" : "audio")
-    setDailyDate(localStorage.getItem(DAILY_DATE_STORAGE_KEY))
+    setSession(readGameSession(localStorage))
+    setSessionLoaded(true)
   }, [])
 
   useEffect(() => {
-    if (tracksLoading) return
+    if (tracksLoading || !sessionLoaded) return
     if (tracks.length === 0) {
       router.push("/playlist")
       return
     }
     setIsLoading(false)
-  }, [router, tracks.length, tracksLoading])
+  }, [router, sessionLoaded, tracks.length, tracksLoading])
 
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
@@ -344,25 +357,32 @@ export default function GamePage() {
 
   const handleExitPlaylist = () => {
     playback.resetPlayback()
-    clearSavedGame()
+    clearSavedGame(session)
     router.push("/playlist")
   }
 
   const handleBackHome = () => {
     playback.resetPlayback()
-    clearSavedGame()
+    clearSavedGame(session)
     router.push("/")
   }
 
   const handleReplayPlaylist = async () => {
     await stopRoundPlayback()
+    if (session) {
+      const nextSession = writeGameSession(localStorage, {
+        ...session,
+        runId: createReplayRunId(session, tracks[0]),
+      })
+      setSession(nextSession)
+    }
     resetGame()
     setPlaylistComplete(false)
   }
 
   const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
-    clearSavedGame()
+    clearSavedGame(session)
     router.push("/playlist")
   }
 
@@ -566,7 +586,11 @@ export default function GamePage() {
         />
 
         {isLyricsMode && currentTrack ? (
-          <LyricsCluePanel track={currentTrack} currentStage={currentStage} />
+          <LyricsCluePanel
+            track={currentTrack}
+            currentStage={currentStage}
+            snippetIndex={selectLyricsSnippetIndex(currentTrack, session?.runId ?? session?.id ?? "lyrics")}
+          />
         ) : (
           <PlaybackPanel
             isPlayerReady={playback.isPlayerReady}

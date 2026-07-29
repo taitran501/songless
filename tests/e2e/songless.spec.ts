@@ -287,8 +287,14 @@ test("starts the daily challenge as a three-track audio game", async ({ page }) 
   await expect(page.getByText("Mode: Daily Challenge")).toBeVisible()
   await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByLabel("Play preview")).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("current_playlist_id"))).toMatch(/^daily-audio-\d{4}-\d{2}-\d{2}$/)
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("audio")
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.kind === "daily" &&
+        session?.playbackMode === "audio" &&
+        /^daily-audio-\d{4}-\d{2}-\d{2}$/.test(session?.id || "")
+    })
+  }).toBe(true)
   await expect.poll(async () => {
     return page.evaluate(() => {
       const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
@@ -317,8 +323,8 @@ test("keeps daily challenge progress in a daily-specific state key", async ({ pa
 
   await expect.poll(async () => {
     return page.evaluate(() => {
-      const playlistId = window.localStorage.getItem("current_playlist_id")
-      return playlistId ? window.localStorage.getItem(`songless_state_${playlistId}`) : null
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.runId ? window.localStorage.getItem(`songless_state_${session.runId}`) : null
     })
   }).toContain('"currentStage":1')
 })
@@ -332,7 +338,12 @@ test("plays partial lyrics mode without audio controls", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Home" })).toBeVisible()
   await expect(page.getByText("Track 1 of")).toBeVisible()
   await expect(page.getByLabel("Play preview")).toHaveCount(0)
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_game_mode"))).toBe("lyrics")
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+      return session?.kind === "lyrics" && session?.playbackMode === "lyrics"
+    })
+  }).toBe(true)
 })
 
 test("reveals another lyrics clue after a wrong guess", async ({ page }) => {

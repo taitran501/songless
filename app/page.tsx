@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button"
 import { CalendarDays, FileText, Music, Youtube } from "lucide-react"
 import { useTracks } from "@/hooks/tracks-store"
 import {
-  DAILY_DATE_STORAGE_KEY,
-  GAME_MODE_STORAGE_KEY,
   getLyricsModeTracks,
   getUtcDateKey,
   selectDailyTracks,
 } from "@/lib/curated-tracks"
+import { createGameSession, writeGameSession } from "@/lib/game-session"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -25,9 +24,15 @@ export default function LoginPage() {
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    localStorage.setItem("current_playlist_id", playlistId)
-    localStorage.setItem(GAME_MODE_STORAGE_KEY, "audio")
-    localStorage.setItem(DAILY_DATE_STORAGE_KEY, dateKey)
+    writeGameSession(
+      localStorage,
+      createGameSession({
+        kind: "daily",
+        playbackMode: "audio",
+        id: playlistId,
+        dateKey,
+      })
+    )
     router.push("/game")
   }
 
@@ -36,9 +41,14 @@ export default function LoginPage() {
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    localStorage.setItem("current_playlist_id", "lyrics-curated-v1")
-    localStorage.setItem(GAME_MODE_STORAGE_KEY, "lyrics")
-    localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
+    writeGameSession(
+      localStorage,
+      createGameSession({
+        kind: "lyrics",
+        playbackMode: "lyrics",
+        id: "lyrics-curated-v1",
+      })
+    )
     router.push("/game")
   }
 

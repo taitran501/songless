@@ -1,0 +1,56 @@
+import assert from "node:assert/strict"
+import { describe, it } from "node:test"
+import {
+  buildShareText,
+  copyShareText,
+  resolveShareUrl,
+} from "../../lib/sharing"
+
+describe("result sharing", () => {
+  it("uses the configured URL or falls back to the current origin", () => {
+    assert.equal(resolveShareUrl("https://songless.example/", "http://localhost:3100"), "https://songless.example")
+    assert.equal(resolveShareUrl(undefined, "http://localhost:3100/"), "http://localhost:3100")
+  })
+
+  it("builds deterministic share text", () => {
+    assert.equal(
+      buildShareText({
+        correct: true,
+        guesses: ["wrong", "answer"],
+        trackIndex: 0,
+        mode: "lyrics",
+        dailyDate: null,
+        score: 80,
+        appUrl: "http://localhost:3100",
+      }),
+      "SonglessUnlimited Lyrics #1\nScore: 80\n📝 🟥🟩⬛⬛⬛⬛\nhttp://localhost:3100"
+    )
+  })
+
+  it("resolves only after clipboard succeeds", async () => {
+    let copied = ""
+    await copyShareText(
+      {
+        async writeText(value: string) {
+          copied = value
+        },
+      },
+      "share me"
+    )
+    assert.equal(copied, "share me")
+  })
+
+  it("propagates clipboard rejection", async () => {
+    await assert.rejects(
+      copyShareText(
+        {
+          async writeText() {
+            throw new Error("permission denied")
+          },
+        },
+        "share me"
+      ),
+      /permission denied/
+    )
+  })
+})

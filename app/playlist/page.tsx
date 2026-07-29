@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
-import { DAILY_DATE_STORAGE_KEY, GAME_MODE_STORAGE_KEY } from "@/lib/curated-tracks"
+import { createGameSession, readGameSession, writeGameSession } from "@/lib/game-session"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
@@ -43,8 +43,8 @@ export default function PlaylistPage() {
         console.error("Error parsing recent playlists:", e)
       }
     }
-    // Restore the currently active playlist ID
-    const currentId = localStorage.getItem("current_playlist_id")
+    const currentSession = readGameSession(localStorage)
+    const currentId = currentSession?.kind === "playlist" ? currentSession.id : null
     if (currentId) setActivePlaylistId(currentId)
   }, [])
 
@@ -104,8 +104,6 @@ export default function PlaylistPage() {
       // Save tracks to global store
       setTracks(data)
       localStorage.setItem("full_playlist_tracks", JSON.stringify(data))
-      localStorage.setItem("current_playlist_id", playlistId)
-
       // Save to recent playlists in localStorage
       const saved = localStorage.getItem("recent_playlists")
       let recent = saved ? JSON.parse(saved) : []
@@ -479,11 +477,20 @@ export default function PlaylistPage() {
 
                   // 3. Clear existing game states to avoid starting with a pre-existing state
                   localStorage.removeItem("game_state")
-                  
+
                   // 4. Save processed tracks to store & redirect
                   setTracks(processedTracks)
-                  localStorage.setItem(GAME_MODE_STORAGE_KEY, "audio")
-                  localStorage.removeItem(DAILY_DATE_STORAGE_KEY)
+                  const playlistId = activePlaylistId || "guest-playlist"
+                  const source = isYouTubePlaylistInput(playlistId) ? "youtube" : "spotify"
+                  writeGameSession(
+                    localStorage,
+                    createGameSession({
+                      kind: "playlist",
+                      playbackMode: "audio",
+                      id: playlistId,
+                      playlistSource: source,
+                    })
+                  )
                   router.push("/game")
                 }}
                 className="bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold text-base h-14 w-full rounded-xl shadow-lg hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
