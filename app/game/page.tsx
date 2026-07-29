@@ -509,6 +509,7 @@ export default function GamePage() {
       const nextSession = writeGameSession(localStorage, {
         ...session,
         runId,
+        startedAt: new Date().toISOString(),
       })
       if (genreReplay) {
         setTracks(genreReplay.tracks)

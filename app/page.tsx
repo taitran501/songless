@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   CalendarDays,
@@ -12,6 +12,16 @@ import {
   Trophy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useTracks } from "@/hooks/tracks-store"
 import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
 import {
@@ -32,6 +42,11 @@ import {
   rememberLyricsRun,
   selectLyricsRunTracks,
 } from "@/lib/lyrics-runs"
+import {
+  discardResumableGameSession,
+  readResumableGameSession,
+  type ResumableGameSession,
+} from "@/lib/resumable-session"
 import type { TrackGenre } from "@/lib/tracks"
 
 const GENRES: TrackGenre[] = ["vpop", "usuk", "rap"]
@@ -55,6 +70,9 @@ export default function HomePage() {
     useState<Record<TrackGenre, GenreProgressRecord>>(emptyGenreProgress)
   const [dailyProgress, setDailyProgress] =
     useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
+  const [resumable, setResumable] = useState<ResumableGameSession | null>(null)
+  const [confirmIntent, setConfirmIntent] = useState<"discard" | "start" | null>(null)
+  const pendingStartRef = useRef<(() => void) | null>(null)
   const todayDateKey = getUtcDateKey()
   const todayDailyRecord =
     dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
@@ -67,9 +85,35 @@ export default function HomePage() {
       ) as Record<TrackGenre, GenreProgressRecord>
     )
     setDailyProgress(readDailyProgress(localStorage))
+    setResumable(readResumableGameSession(localStorage))
   }, [])
 
-  const handleGuestPlay = () => router.push("/playlist")
+  const requestNewRun = (start: () => void) => {
+    if (!resumable) {
+      start()
+      return
+    }
+    pendingStartRef.current = start
+    setConfirmIntent("start")
+  }
+
+  const handleGuestPlay = () => requestNewRun(() => router.push("/playlist"))
+
+  const continueRun = () => {
+    if (!resumable) return
+    setTracks(resumable.tracks)
+    router.push("/game")
+  }
+
+  const confirmDiscard = () => {
+    if (!resumable) return
+    discardResumableGameSession(localStorage, resumable)
+    setResumable(null)
+    setConfirmIntent(null)
+    const pendingStart = pendingStartRef.current
+    pendingStartRef.current = null
+    pendingStart?.()
+  }
 
   const startDailyChallenge = () => {
     const dateKey = getUtcDateKey()
@@ -148,6 +192,49 @@ export default function HomePage() {
           </p>
         </header>
 
+        {resumable && (
+          <section
+            data-testid="continue-run-banner"
+            className="mb-5 flex flex-col gap-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.06] p-4 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-5"
+          >
+            <div>
+              <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+                Run in progress
+              </span>
+              <h2 className="mt-1 font-display text-lg font-bold text-white">
+                Continue{" "}
+                {resumable.session.kind === "lyrics"
+                  ? "Lyrics Quick Mix"
+                  : resumable.session.kind === "daily"
+                    ? "Daily Challenge"
+                    : resumable.session.kind === "genre"
+                      ? `${resumable.session.genre?.toUpperCase()} Practice`
+                      : "Playlist"}
+              </h2>
+              <p className="mt-1 text-sm text-[#9ca3af]">
+                Track {resumable.state.currentIndex + 1} of {resumable.tracks.length} ·{" "}
+                {resumable.session.playbackMode === "lyrics" ? "Clue" : "Stage"}{" "}
+                {resumable.state.currentStage + 1} of 6
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={continueRun}
+                className="flex-1 rounded-xl bg-cyan-300 font-bold text-[#041015] hover:bg-cyan-200 sm:flex-none"
+              >
+                CONTINUE RUN
+              </Button>
+              <Button
+                onClick={() => setConfirmIntent("discard")}
+                variant="outline"
+                className="flex-1 rounded-xl border-white/10 bg-transparent text-[#a8b0bf] hover:bg-white/5 hover:text-white sm:flex-none"
+              >
+                DISCARD
+              </Button>
+            </div>
+          </section>
+        )}
+
         <section
           data-testid="home-daily-card"
           className="group relative mb-5 overflow-hidden rounded-3xl border border-[#10b981]/30 bg-[#08121a]/85 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] ring-1 ring-white/5 transition-colors hover:border-[#34d399]/55 sm:p-8"
@@ -169,7 +256,7 @@ export default function HomePage() {
                   The same balanced mix for everyone: one VPop, one USUK, and one Rap track.
                 </p>
                 <Button
-                  onClick={startDailyChallenge}
+                  onClick={() => requestNewRun(startDailyChallenge)}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
                   {todayDailyRecord ? "Play Again" : "Start Today\u2019s Challenge"}
@@ -256,7 +343,7 @@ export default function HomePage() {
               Solve five lyric clues across VPop, USUK, and Rap. Each clue reveals more without exposing the title.
             </p>
             <Button
-              onClick={startLyricsMode}
+              onClick={() => requestNewRun(startLyricsMode)}
               variant="outline"
               className="mt-6 h-11 w-full rounded-xl border-indigo-300/25 bg-indigo-300/[0.04] font-semibold text-white hover:bg-indigo-300/10 hover:text-white"
             >
@@ -309,7 +396,7 @@ export default function HomePage() {
                   <button
                     key={genre}
                     type="button"
-                    onClick={() => startGenrePractice(genre)}
+                    onClick={() => requestNewRun(() => startGenrePractice(genre))}
                     className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] px-2 py-3 text-center transition-colors hover:border-cyan-300/40 hover:bg-cyan-300/10"
                   >
                     <span className="block text-sm font-bold text-white">{GENRE_LABELS[genre]}</span>
@@ -333,6 +420,40 @@ export default function HomePage() {
         <p className="mt-7 text-center text-xs text-[#697386]">
           Progress stays on this device. Public playlist mode requires no user login.
         </p>
+
+        <AlertDialog
+          open={confirmIntent !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmIntent(null)
+              pendingStartRef.current = null
+            }
+          }}
+        >
+          <AlertDialogContent className="border-white/10 bg-[#090d16] text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmIntent === "start"
+                  ? "Start a new run and discard current progress?"
+                  : "Discard this run?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-[#9ca3af]">
+                Your current guesses, score, and track progress will be cleared.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5 hover:text-white">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDiscard}
+                className="bg-[#ef4444] text-white hover:bg-[#dc2626]"
+              >
+                {confirmIntent === "start" ? "Discard and start" : "Discard run"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   )

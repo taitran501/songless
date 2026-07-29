@@ -10,6 +10,10 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useTracks } from "@/hooks/tracks-store"
 import { createGameSession, readGameSession, writeGameSession } from "@/lib/game-session"
+import {
+  discardResumableGameSession,
+  readResumableGameSession,
+} from "@/lib/resumable-session"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
@@ -449,6 +453,17 @@ export default function PlaylistPage() {
 
               <Button 
                 onClick={() => {
+                  const resumable = readResumableGameSession(localStorage)
+                  if (
+                    resumable &&
+                    !window.confirm("Start a new run and discard current progress?")
+                  ) {
+                    return
+                  }
+                  if (resumable) {
+                    discardResumableGameSession(localStorage, resumable)
+                  }
+
                   const savedFull = localStorage.getItem("full_playlist_tracks")
                   let sourceTracks = tracks
                   if (savedFull) {

@@ -49,13 +49,12 @@ describe("game session persistence", () => {
 
     const session = readGameSession(storage)
 
-    assert.deepEqual(session, {
-      kind: "daily",
-      playbackMode: "audio",
-      id: "daily-audio-2026-07-29",
-      runId: "legacy-daily-audio-2026-07-29",
-      dateKey: "2026-07-29",
-    })
+    assert.equal(session?.kind, "daily")
+    assert.equal(session?.playbackMode, "audio")
+    assert.equal(session?.id, "daily-audio-2026-07-29")
+    assert.equal(session?.runId, "legacy-daily-audio-2026-07-29")
+    assert.equal(session?.dateKey, "2026-07-29")
+    assert.ok(session?.startedAt)
     assert.ok(storage.getItem(GAME_SESSION_STORAGE_KEY))
     assert.ok(storage.getItem(getGameStateStorageKey(session!)))
     assert.equal(storage.getItem("current_playlist_id"), null)
