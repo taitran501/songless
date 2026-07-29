@@ -29,6 +29,12 @@ import {
 } from "@/lib/genre-progress"
 import { isCorrectGuess } from "@/lib/guessing"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
+import {
+  getLyricsTrackId,
+  readRecentLyricsTrackIds,
+  rememberLyricsRun,
+  selectLyricsRunTracks,
+} from "@/lib/lyrics-runs"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
@@ -110,6 +116,28 @@ function createGenreReplay(
 
   const runId = createRunId("genre-replay")
   return { runId, tracks: selectGenrePracticeTracks(session.genre, runId) }
+}
+
+function createLyricsReplay(session: GameSessionMeta, currentTracks: GameTrack[]) {
+  const currentOrder = currentTracks.map(getLyricsTrackId).join("|")
+  const recentTrackIds = [
+    ...readRecentLyricsTrackIds(localStorage),
+    ...currentTracks.map(getLyricsTrackId),
+  ]
+
+  for (let attempt = 1; attempt <= 100; attempt++) {
+    const runId = `${session.runId}-replay-${attempt}`
+    const tracks = selectLyricsRunTracks({ runId, recentTrackIds })
+    if (tracks.map(getLyricsTrackId).join("|") !== currentOrder) {
+      return { runId, tracks }
+    }
+  }
+
+  const runId = createRunId("lyrics-replay")
+  return {
+    runId,
+    tracks: selectLyricsRunTracks({ runId, recentTrackIds }),
+  }
 }
 
 export default function GamePage() {
@@ -415,13 +443,21 @@ export default function GamePage() {
     await stopRoundPlayback()
     if (session) {
       const genreReplay = isGenreSession(session) ? createGenreReplay(session, tracks) : null
-      const runId = genreReplay?.runId ?? createReplayRunId(session, tracks[0])
+      const lyricsReplay =
+        session.kind === "lyrics" ? createLyricsReplay(session, tracks) : null
+      const runId =
+        genreReplay?.runId ??
+        lyricsReplay?.runId ??
+        createReplayRunId(session, tracks[0])
       const nextSession = writeGameSession(localStorage, {
         ...session,
         runId,
       })
       if (genreReplay) {
         setTracks(genreReplay.tracks)
+      } else if (lyricsReplay) {
+        setTracks(lyricsReplay.tracks)
+        rememberLyricsRun(localStorage, lyricsReplay.tracks)
       }
       setSession(nextSession)
     }
@@ -576,7 +612,7 @@ export default function GamePage() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleReplayPlaylist} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl">
               <RotateCcw className="w-4 h-4 mr-2" />
-              {isGenreSession(session) ? "REPLAY GENRE" : "REPLAY PLAYLIST"}
+              {isLyricsMode ? "PLAY ANOTHER 5" : isGenreSession(session) ? "REPLAY GENRE" : "REPLAY PLAYLIST"}
             </Button>
             <Button onClick={handleLoadAnotherPlaylist} variant="outline" className="flex-1 bg-transparent border-white/10 hover:bg-white/5 text-[#dce5d9] h-12 rounded-xl">
               {isGenreSession(session) ? "CHOOSE ANOTHER" : "LOAD ANOTHER"}

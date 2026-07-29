@@ -5,12 +5,16 @@ import { Button } from "@/components/ui/button"
 import { CalendarDays, FileText, Headphones, Music, Youtube } from "lucide-react"
 import { useTracks } from "@/hooks/tracks-store"
 import {
-  getLyricsModeTracks,
   getUtcDateKey,
   selectDailyTracks,
 } from "@/lib/curated-tracks"
 import { createGameSession, writeGameSession } from "@/lib/game-session"
 import { selectGenrePracticeTracks } from "@/lib/genre-progress"
+import {
+  readRecentLyricsTrackIds,
+  rememberLyricsRun,
+  selectLyricsRunTracks,
+} from "@/lib/lyrics-runs"
 import type { TrackGenre } from "@/lib/tracks"
 
 const GENRE_LABELS: Record<TrackGenre, string> = {
@@ -45,18 +49,20 @@ export default function LoginPage() {
   }
 
   const startLyricsMode = () => {
-    const tracks = getLyricsModeTracks()
+    const session = createGameSession({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-quick-mix-v2",
+    })
+    const tracks = selectLyricsRunTracks({
+      runId: session.runId,
+      recentTrackIds: readRecentLyricsTrackIds(localStorage),
+    })
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    writeGameSession(
-      localStorage,
-      createGameSession({
-        kind: "lyrics",
-        playbackMode: "lyrics",
-        id: "lyrics-curated-v1",
-      })
-    )
+    rememberLyricsRun(localStorage, tracks)
+    writeGameSession(localStorage, session)
     router.push("/game")
   }
 
