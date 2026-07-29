@@ -145,7 +145,7 @@ export function GuessPanel({
           <Button onClick={onSkip} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
             <SkipForward className="w-4 h-4 mr-2" />
             {isLyricsMode
-              ? currentStage === 5 ? "SKIP (+0)" : "REVEAL NEXT CLUE"
+              ? currentStage === 5 ? "GIVE UP & REVEAL ANSWER" : "REVEAL NEXT CLUE"
               : `SKIP (+${currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)`}
           </Button>
           <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={!guess.trim()}>

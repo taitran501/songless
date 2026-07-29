@@ -72,7 +72,7 @@ describe("lyrics clues", () => {
     assert.equal(rotated, true)
   })
 
-  it("masks short song titles", () => {
+  it("keeps short song titles hidden while revealing the artist in the final clue", () => {
     const shortTitleTrack: GameTrack = {
       ...track,
       name: "Em",
@@ -82,6 +82,6 @@ describe("lyrics clues", () => {
 
     const clue = buildLyricsClue(shortTitleTrack, 5).toLowerCase()
     assert.equal(clue.includes("em"), false)
-    assert.equal(clue.includes("binz"), false)
+    assert.equal(clue.includes("binz"), true)
   })
 })
