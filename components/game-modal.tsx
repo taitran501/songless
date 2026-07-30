@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Share2, SkipForward, Music } from "lucide-react"
 import {
+  captureProductEvent,
+  getRunAnalyticsContext,
+} from "@/lib/analytics"
+import type { GameSessionMeta } from "@/lib/game-session"
+import {
   buildEmojiGrid,
   buildShareText,
   copyShareText,
@@ -27,6 +32,7 @@ interface GameModalProps {
   mode?: GameMode
   dailyDate?: string | null
   score?: number
+  session?: GameSessionMeta | null
 }
 
 export function GameModal({
@@ -44,6 +50,7 @@ export function GameModal({
   mode = "audio",
   dailyDate = null,
   score = 0,
+  session = null,
 }: GameModalProps) {
   const { toast } = useToast()
 
@@ -62,12 +69,32 @@ export function GameModal({
         appUrl,
       })
       await copyShareText(navigator.clipboard, shareText)
+      if (session) {
+        captureProductEvent({
+          name: "result_shared",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            scope: "track",
+            success: true,
+          },
+        })
+      }
       
       toast({
         title: "Copied to clipboard!",
         description: "You can now share your results with friends.",
       })
     } catch (error) {
+      if (session) {
+        captureProductEvent({
+          name: "result_shared",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            scope: "track",
+            success: false,
+          },
+        })
+      }
       console.error("Failed to copy share text:", error)
       toast({
         title: "Copy failed",

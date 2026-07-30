@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   CalendarDays,
@@ -12,8 +12,28 @@ import {
   Trophy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { useTracks } from "@/hooks/tracks-store"
+import {
+  captureProductEvent,
+  getRunAnalyticsContext,
+} from "@/lib/analytics"
 import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
+import {
+  EMPTY_DAILY_PROGRESS,
+  getRecentDailyDays,
+  readDailyProgress,
+  type DailyProgressState,
+} from "@/lib/daily-progress"
 import { createGameSession, writeGameSession } from "@/lib/game-session"
 import {
   EMPTY_GENRE_PROGRESS,
@@ -26,6 +46,11 @@ import {
   rememberLyricsRun,
   selectLyricsRunTracks,
 } from "@/lib/lyrics-runs"
+import {
+  discardResumableGameSession,
+  readResumableGameSession,
+  type ResumableGameSession,
+} from "@/lib/resumable-session"
 import type { TrackGenre } from "@/lib/tracks"
 
 const GENRES: TrackGenre[] = ["vpop", "usuk", "rap"]
@@ -47,6 +72,16 @@ export default function HomePage() {
   const { setTracks } = useTracks()
   const [genreProgress, setGenreProgress] =
     useState<Record<TrackGenre, GenreProgressRecord>>(emptyGenreProgress)
+  const [dailyProgress, setDailyProgress] =
+    useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
+  const [resumable, setResumable] = useState<ResumableGameSession | null>(null)
+  const [confirmIntent, setConfirmIntent] = useState<"discard" | "start" | null>(null)
+  const pendingStartRef = useRef<(() => void) | null>(null)
+  const homeViewedRef = useRef(false)
+  const todayDateKey = getUtcDateKey()
+  const todayDailyRecord =
+    dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
+  const recentDailyDays = getRecentDailyDays(todayDateKey, dailyProgress)
 
   useEffect(() => {
     setGenreProgress(
@@ -54,26 +89,71 @@ export default function HomePage() {
         GENRES.map((genre) => [genre, readGenreProgress(localStorage, genre)])
       ) as Record<TrackGenre, GenreProgressRecord>
     )
+    setDailyProgress(readDailyProgress(localStorage))
+    setResumable(readResumableGameSession(localStorage))
+    if (!homeViewedRef.current) {
+      homeViewedRef.current = true
+      captureProductEvent({ name: "home_viewed" })
+    }
   }, [])
 
-  const handleGuestPlay = () => router.push("/playlist")
+  const requestNewRun = (start: () => void) => {
+    if (!resumable) {
+      start()
+      return
+    }
+    pendingStartRef.current = start
+    setConfirmIntent("start")
+  }
+
+  const handleGuestPlay = () => requestNewRun(() => router.push("/playlist"))
+
+  const continueRun = () => {
+    if (!resumable) return
+    setTracks(resumable.tracks)
+    captureProductEvent({
+      name: "run_resumed",
+      properties: {
+        ...getRunAnalyticsContext(resumable.session),
+        trackNumber: resumable.state.currentIndex + 1,
+        stage: resumable.state.currentStage + 1,
+        totalTracks: resumable.tracks.length,
+      },
+    })
+    router.push("/game")
+  }
+
+  const confirmDiscard = () => {
+    if (!resumable) return
+    discardResumableGameSession(localStorage, resumable)
+    setResumable(null)
+    setConfirmIntent(null)
+    const pendingStart = pendingStartRef.current
+    pendingStartRef.current = null
+    pendingStart?.()
+  }
 
   const startDailyChallenge = () => {
     const dateKey = getUtcDateKey()
     const tracks = selectDailyTracks(dateKey)
     const playlistId = `daily-audio-${dateKey}`
+    const session = createGameSession({
+      kind: "daily",
+      playbackMode: "audio",
+      id: playlistId,
+      dateKey,
+    })
 
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    writeGameSession(
-      localStorage,
-      createGameSession({
-        kind: "daily",
-        playbackMode: "audio",
-        id: playlistId,
-        dateKey,
-      })
-    )
+    writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -92,6 +172,13 @@ export default function HomePage() {
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
     rememberLyricsRun(localStorage, tracks)
     writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -107,6 +194,13 @@ export default function HomePage() {
     setTracks(tracks)
     localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
     writeGameSession(localStorage, session)
+    captureProductEvent({
+      name: "run_started",
+      properties: {
+        ...getRunAnalyticsContext(session),
+        totalTracks: tracks.length,
+      },
+    })
     router.push("/game")
   }
 
@@ -135,12 +229,55 @@ export default function HomePage() {
           </p>
         </header>
 
+        {resumable && (
+          <section
+            data-testid="continue-run-banner"
+            className="mb-5 flex flex-col gap-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/[0.06] p-4 shadow-xl sm:flex-row sm:items-center sm:justify-between sm:p-5"
+          >
+            <div>
+              <span className="font-display text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-300">
+                Run in progress
+              </span>
+              <h2 className="mt-1 font-display text-lg font-bold text-white">
+                Continue{" "}
+                {resumable.session.kind === "lyrics"
+                  ? "Lyrics Quick Mix"
+                  : resumable.session.kind === "daily"
+                    ? "Daily Challenge"
+                    : resumable.session.kind === "genre"
+                      ? `${resumable.session.genre?.toUpperCase()} Practice`
+                      : "Playlist"}
+              </h2>
+              <p className="mt-1 text-sm text-[#9ca3af]">
+                Track {resumable.state.currentIndex + 1} of {resumable.tracks.length} ·{" "}
+                {resumable.session.playbackMode === "lyrics" ? "Clue" : "Stage"}{" "}
+                {resumable.state.currentStage + 1} of 6
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={continueRun}
+                className="flex-1 rounded-xl bg-cyan-300 font-bold text-[#041015] hover:bg-cyan-200 sm:flex-none"
+              >
+                CONTINUE RUN
+              </Button>
+              <Button
+                onClick={() => setConfirmIntent("discard")}
+                variant="outline"
+                className="flex-1 rounded-xl border-white/10 bg-transparent text-[#a8b0bf] hover:bg-white/5 hover:text-white sm:flex-none"
+              >
+                DISCARD
+              </Button>
+            </div>
+          </section>
+        )}
+
         <section
           data-testid="home-daily-card"
           className="group relative mb-5 overflow-hidden rounded-3xl border border-[#10b981]/30 bg-[#08121a]/85 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] ring-1 ring-white/5 transition-colors hover:border-[#34d399]/55 sm:p-8"
         >
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#10b981]/10 via-transparent to-indigo-500/[0.06]" />
-          <div className="relative grid items-center gap-7 md:grid-cols-[1fr_240px] lg:grid-cols-[1fr_300px]">
+          <div className="relative grid items-center gap-7 md:grid-cols-[1fr_300px]">
             <div className="flex items-start gap-4 sm:gap-5">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#10b981]/30 bg-[#10b981]/12 sm:h-14 sm:w-14">
                 <CalendarDays className="h-6 w-6 text-[#34d399] sm:h-7 sm:w-7" />
@@ -156,22 +293,70 @@ export default function HomePage() {
                   The same balanced mix for everyone: one VPop, one USUK, and one Rap track.
                 </p>
                 <Button
-                  onClick={startDailyChallenge}
+                  onClick={() => requestNewRun(startDailyChallenge)}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
-                  Start Today&apos;s Challenge
+                  {todayDailyRecord ? "Play Again" : "Start Today's Challenge"}
                 </Button>
               </div>
             </div>
 
-            <div aria-hidden="true" className="hidden h-28 items-end justify-center gap-2 rounded-2xl border border-white/10 bg-[#030712]/45 px-5 py-5 md:flex">
-              {EQUALIZER_HEIGHTS.map((height, index) => (
-                <span
-                  key={`${height}-${index}`}
-                  className="w-2 rounded-full bg-gradient-to-t from-[#059669] to-[#6ee7b7] opacity-80 transition-all duration-300 group-hover:opacity-100"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
+            <div className="rounded-2xl border border-white/10 bg-[#030712]/45 p-4">
+              <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Current</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-display text-lg font-bold text-white">
+                    <Flame className="h-4 w-4 text-orange-300" />
+                    {dailyProgress.currentStreak}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Best</p>
+                  <p className="mt-1 inline-flex items-center gap-1 font-display text-lg font-bold text-white">
+                    <Trophy className="h-4 w-4 text-amber-300" />
+                    {dailyProgress.bestStreak}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Today</p>
+                  <p className="mt-1 font-display text-lg font-bold text-white">
+                    {todayDailyRecord ? todayDailyRecord.bestScore : "—"}
+                  </p>
+                </div>
+              </div>
+              <div data-testid="daily-week" className="grid grid-cols-7 gap-1.5">
+                {recentDailyDays.map(({ dateKey, record }) => (
+                  <div key={dateKey} className="text-center">
+                    <span className="block text-[9px] font-semibold uppercase text-[#697386]">
+                      {new Date(`${dateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
+                        weekday: "narrow",
+                        timeZone: "UTC",
+                      })}
+                    </span>
+                    <span
+                      className={`mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        record
+                          ? "border-[#10b981]/50 bg-[#10b981]/20 text-[#6ee7b7]"
+                          : dateKey === todayDateKey
+                            ? "border-white/25 bg-white/[0.05] text-white"
+                            : "border-white/10 text-[#4b5563]"
+                      }`}
+                      title={record ? `${record.bestScore} points` : "Not completed"}
+                    >
+                      {record ? "✓" : "·"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div aria-hidden="true" className="mt-4 hidden h-8 items-end justify-center gap-1.5 md:flex">
+                {EQUALIZER_HEIGHTS.map((height, index) => (
+                  <span
+                    key={`${height}-${index}`}
+                    className="w-1.5 rounded-full bg-gradient-to-t from-[#059669] to-[#6ee7b7] opacity-60 transition-all duration-300 group-hover:opacity-100"
+                    style={{ height: `${Math.max(20, height)}%` }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -195,7 +380,7 @@ export default function HomePage() {
               Solve five lyric clues across VPop, USUK, and Rap. Each clue reveals more without exposing the title.
             </p>
             <Button
-              onClick={startLyricsMode}
+              onClick={() => requestNewRun(startLyricsMode)}
               variant="outline"
               className="mt-6 h-11 w-full rounded-xl border-indigo-300/25 bg-indigo-300/[0.04] font-semibold text-white hover:bg-indigo-300/10 hover:text-white"
             >
@@ -248,7 +433,7 @@ export default function HomePage() {
                   <button
                     key={genre}
                     type="button"
-                    onClick={() => startGenrePractice(genre)}
+                    onClick={() => requestNewRun(() => startGenrePractice(genre))}
                     className="rounded-xl border border-cyan-300/20 bg-cyan-300/[0.04] px-2 py-3 text-center transition-colors hover:border-cyan-300/40 hover:bg-cyan-300/10"
                   >
                     <span className="block text-sm font-bold text-white">{GENRE_LABELS[genre]}</span>
@@ -272,6 +457,40 @@ export default function HomePage() {
         <p className="mt-7 text-center text-xs text-[#697386]">
           Progress stays on this device. Public playlist mode requires no user login.
         </p>
+
+        <AlertDialog
+          open={confirmIntent !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmIntent(null)
+              pendingStartRef.current = null
+            }
+          }}
+        >
+          <AlertDialogContent className="border-white/10 bg-[#090d16] text-white">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmIntent === "start"
+                  ? "Start a new run and discard current progress?"
+                  : "Discard this run?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-[#9ca3af]">
+                Your current guesses, score, and track progress will be cleared.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5 hover:text-white">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDiscard}
+                className="bg-[#ef4444] text-white hover:bg-[#dc2626]"
+              >
+                {confirmIntent === "start" ? "Discard and start" : "Discard run"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
     </div>
   )

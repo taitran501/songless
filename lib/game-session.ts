@@ -11,6 +11,7 @@ const gameSessionSchema = z.object({
   playbackMode: z.enum(["audio", "lyrics"]),
   id: z.string().min(1),
   runId: z.string().min(1),
+  startedAt: z.string().datetime().optional(),
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   genre: z.enum(["usuk", "vpop", "rap"]).optional(),
   playlistSource: z.enum(["spotify", "youtube"]).optional(),
@@ -35,6 +36,7 @@ export function createGameSession(
   return gameSessionSchema.parse({
     ...input,
     runId: input.runId ?? createRunId(input.kind),
+    startedAt: input.startedAt ?? new Date().toISOString(),
   })
 }
 

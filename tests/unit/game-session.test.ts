@@ -6,7 +6,11 @@ import {
   readGameSession,
   writeGameSession,
 } from "../../lib/game-session"
-import { parseSavedGameState } from "../../lib/game-state"
+import {
+  appendTrackResult,
+  buildTrackRunResult,
+  parseSavedGameState,
+} from "../../lib/game-state"
 
 class MemoryStorage {
   private values = new Map<string, string>()
@@ -45,13 +49,12 @@ describe("game session persistence", () => {
 
     const session = readGameSession(storage)
 
-    assert.deepEqual(session, {
-      kind: "daily",
-      playbackMode: "audio",
-      id: "daily-audio-2026-07-29",
-      runId: "legacy-daily-audio-2026-07-29",
-      dateKey: "2026-07-29",
-    })
+    assert.equal(session?.kind, "daily")
+    assert.equal(session?.playbackMode, "audio")
+    assert.equal(session?.id, "daily-audio-2026-07-29")
+    assert.equal(session?.runId, "legacy-daily-audio-2026-07-29")
+    assert.equal(session?.dateKey, "2026-07-29")
+    assert.ok(session?.startedAt)
     assert.ok(storage.getItem(GAME_SESSION_STORAGE_KEY))
     assert.ok(storage.getItem(getGameStateStorageKey(session!)))
     assert.equal(storage.getItem("current_playlist_id"), null)
@@ -91,6 +94,15 @@ describe("saved game state validation", () => {
     solvedStageTotal: 2,
     currentStreak: 1,
     bestRunStreak: 1,
+    trackResults: [
+      {
+        trackId: "track-a",
+        status: "solved" as const,
+        attempts: ["wrong" as const, "correct" as const],
+        completedStage: 1,
+        points: 80,
+      },
+    ],
   }
 
   it("accepts valid in-range state", () => {
@@ -105,5 +117,42 @@ describe("saved game state validation", () => {
   it("rejects stages outside the six-stage contract", () => {
     assert.equal(parseSavedGameState(JSON.stringify({ ...validState, currentStage: 6 }), 3), null)
     assert.equal(parseSavedGameState(JSON.stringify({ ...validState, currentStage: -1 }), 3), null)
+  })
+
+  it("migrates completed legacy tracks to explicit unknown results", () => {
+    const legacyState = { ...validState }
+    delete (legacyState as Partial<typeof validState>).trackResults
+
+    const parsed = parseSavedGameState(
+      JSON.stringify(legacyState),
+      3,
+      ["track-a", "track-b", "track-c"]
+    )
+
+    assert.deepEqual(parsed?.trackResults, [
+      {
+        trackId: "track-a",
+        status: "unknown",
+        attempts: [],
+        completedStage: null,
+        points: 0,
+      },
+    ])
+  })
+
+  it("records typed attempts once per track", () => {
+    const result = buildTrackRunResult({
+      trackId: "track-a",
+      guesses: ["wrong answer", "SKIPPED", "answer"],
+      solved: true,
+      completedStage: 2,
+      points: 60,
+    })
+
+    const once = appendTrackResult([], result)
+    const twice = appendTrackResult(once, result)
+
+    assert.deepEqual(result.attempts, ["wrong", "skip", "correct"])
+    assert.equal(twice.length, 1)
   })
 })

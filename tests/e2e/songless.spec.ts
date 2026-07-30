@@ -93,6 +93,22 @@ async function mockClipboard(page: Page, shouldReject = false) {
   }, shouldReject)
 }
 
+async function solveCurrentRun(page: Page, totalTracks: number) {
+  for (let index = 0; index < totalTracks; index++) {
+    const trackName = await page.evaluate((trackIndex) => {
+      const tracks = JSON.parse(window.localStorage.getItem("game_tracks") || "[]")
+      return tracks[trackIndex].name
+    }, index)
+    await page.getByPlaceholder(/Know the song\?/).fill(trackName)
+    await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+    await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+    await page
+      .getByRole("button", { name: index === totalTracks - 1 ? "VIEW SUMMARY" : "NEXT SONG" })
+      .click()
+  }
+  await expect(page.getByText("Final Score")).toBeVisible()
+}
+
 async function mockHtmlAudio(page: Page) {
   await page.addInitScript(() => {
     ;(window as any).__audioEvents = { play: 0, pause: 0, lastSrc: "" }
@@ -587,6 +603,116 @@ test("confirms discarding a started run and preserves it on cancel", async ({ pa
   ).toBeNull()
 })
 
+test("continues an interrupted run and confirms before replacing it", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+  await page.getByRole("button", { name: "REVEAL NEXT CLUE" }).click()
+  const runId = await page.evaluate(() => {
+    return JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")?.runId
+  })
+
+  await page.goto("/")
+  const banner = page.getByTestId("continue-run-banner")
+  await expect(banner).toContainText("Track 1 of 5")
+  await expect(banner).toContainText("Clue 2 of 6")
+
+  await page.getByRole("button", { name: "Start Today's Challenge" }).click()
+  await expect(page.getByRole("alertdialog")).toContainText(
+    "Start a new run and discard current progress?"
+  )
+  await page.getByRole("button", { name: "Cancel" }).click()
+  await expect(banner).toBeVisible()
+
+  await page.getByRole("button", { name: "CONTINUE RUN" }).click()
+  await expect(page.getByText("Track 1 of 5")).toBeVisible()
+  await expect(page.getByText("Lyric clue 2 / 6")).toBeVisible()
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      return JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")?.runId
+    })
+  ).toBe(runId)
+})
+
+test("records a completed daily once per UTC date and shows the seven-day history", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Today's Challenge" }).click()
+  await solveCurrentRun(page, 3)
+
+  const firstProgress = await page.evaluate(() => {
+    return JSON.parse(window.localStorage.getItem("songless_daily_progress_v1") || "null")
+  })
+  expect(firstProgress.currentStreak).toBe(1)
+  expect(firstProgress.history[0].completedRuns).toBe(1)
+
+  await page.getByRole("button", { name: "REPLAY DAILY" }).click()
+  await solveCurrentRun(page, 3)
+
+  const replayProgress = await page.evaluate(() => {
+    return JSON.parse(window.localStorage.getItem("songless_daily_progress_v1") || "null")
+  })
+  expect(replayProgress.currentStreak).toBe(1)
+  expect(replayProgress.history[0].completedRuns).toBe(2)
+
+  await page.getByRole("button", { name: "HOME", exact: true }).last().click()
+  await expect(page.getByTestId("daily-week")).toContainText("✓")
+  await expect(page.getByRole("button", { name: "Play Again" })).toBeVisible()
+})
+
+test("shares a complete run without exposing the answer", async ({ page }) => {
+  await mockClipboard(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-run-share",
+      runId: "lyrics-run-share-id",
+    }),
+  })
+
+  await page.goto("/game")
+  await solveCurrentRun(page, 1)
+  await page.getByRole("button", { name: "SHARE RUN" }).click()
+
+  await expect(page.getByText("Run copied!")).toBeVisible()
+  const shared = await page.evaluate(() => (window as any).__copiedShareText as string)
+  expect(shared).toContain("1/1 solved")
+  expect(shared).not.toContain("Hidden Answer")
+  expect(shared).not.toContain("Secret Singer")
+})
+
+test("keeps run sharing retryable when clipboard access fails", async ({ page }) => {
+  await mockClipboard(page, true)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockLyricsTrack]),
+    songless_session_v2: JSON.stringify({
+      kind: "lyrics",
+      playbackMode: "lyrics",
+      id: "lyrics-run-share-error",
+      runId: "lyrics-run-share-error-id",
+    }),
+  })
+
+  await page.goto("/game")
+  await solveCurrentRun(page, 1)
+  await page.getByRole("button", { name: "SHARE RUN" }).click()
+
+  await expect(page.getByText("Copy failed", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "SHARE RUN" })).toBeVisible()
+})
+
+test("uses one contextual HUD without playlist-only labels", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Start Lyrics Quick Mix" }).click()
+
+  const hud = page.getByTestId("game-hud")
+  await expect(hud).toContainText("Track 1 of 5")
+  await expect(hud).toContainText("Clue")
+  await expect(page.getByText("Playlist Progress")).toHaveCount(0)
+  await expect(page.getByText("Current Stage")).toHaveCount(0)
+})
+
 test("routes an untouched playlist run back to playlist setup without confirmation", async ({ page }) => {
   await seedStorage(page, {
     game_tracks: JSON.stringify(mockTracks),
@@ -676,7 +802,7 @@ test("reports share success only after clipboard resolves", async ({ page }) => 
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
   await page.getByRole("button", { name: "SHARE RESULTS" }).click()
 
-  await expect(page.getByText("Copied to clipboard!")).toBeVisible()
+  await expect(page.getByText("Copied to clipboard!", { exact: true })).toBeVisible()
   await expect.poll(async () => page.evaluate(() => (window as any).__copiedShareText)).toContain("http://127.0.0.1:3100")
 })
 
