@@ -110,4 +110,13 @@ describe("resumable game session", () => {
     assert.equal(readResumableGameSession(completedStorage), null)
     assert.equal(completedStorage.getItem(GAME_SESSION_STORAGE_KEY), null)
   })
+
+  it("does not expose a session explicitly marked completed", () => {
+    const storage = new MemoryStorage()
+    const session = seedRun(storage)
+    writeGameSession(storage, { ...session, status: "completed" })
+
+    assert.equal(readResumableGameSession(storage), null)
+    assert.equal(storage.getItem(GAME_SESSION_STORAGE_KEY), null)
+  })
 })

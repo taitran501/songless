@@ -21,6 +21,7 @@ interface GuessPanelProps {
   suggestions: GuessSuggestion[]
   isSearching: boolean
   showSuggestions: boolean
+  isDisabled?: boolean
   searchContainerRef: RefObject<HTMLDivElement | null>
   onGuessChange: (value: string) => void
   onFocus: () => void
@@ -38,6 +39,7 @@ export function GuessPanel({
   suggestions,
   isSearching,
   showSuggestions,
+  isDisabled = false,
   searchContainerRef,
   onGuessChange,
   onFocus,
@@ -157,10 +159,16 @@ export function GuessPanel({
             placeholder={isLyricsMode ? "Know the song? Search title..." : "Know the song? Search artist or title..."}
             value={guess}
             onChange={(event) => onGuessChange(event.target.value)}
-            onFocus={onFocus}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") onSubmitGuess()
+            onFocus={() => {
+              if (!isDisabled) onFocus()
             }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                if (!isDisabled) onSubmitGuess()
+              }
+            }}
+            disabled={isDisabled}
             className="bg-[#030712]/80 border-white/10 text-white pl-12 h-12 rounded-xl focus-visible:ring-[#10b981]/50 focus-visible:border-[#10b981]/50"
           />
           <Search className="absolute left-4 top-3.5 w-5 h-5 text-[#6b7280]" />
@@ -171,7 +179,10 @@ export function GuessPanel({
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.uri}
-                  onClick={() => onSelectSuggestion(suggestion)}
+                  onClick={() => {
+                    if (!isDisabled) onSelectSuggestion(suggestion)
+                  }}
+                  disabled={isDisabled}
                   className="w-full cursor-pointer text-left px-4 py-3 hover:bg-white/5 flex items-center space-x-3"
                 >
                   {suggestion.albumImage ? (
@@ -197,13 +208,13 @@ export function GuessPanel({
           )}
         </div>
         <div className="flex gap-3">
-          <Button onClick={onSkip} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
+          <Button onClick={onSkip} disabled={isDisabled} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
             <SkipForward className="w-4 h-4 mr-2" />
             {isLyricsMode
               ? currentStage === 5 ? "GIVE UP & REVEAL ANSWER" : "REVEAL NEXT CLUE"
               : `SKIP (+${currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)`}
           </Button>
-          <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={!guess.trim()}>
+          <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={isDisabled || !guess.trim()}>
             <Check className="w-4 h-4 mr-2" />
             SUBMIT GUESS
           </Button>

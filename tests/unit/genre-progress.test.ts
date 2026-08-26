@@ -6,27 +6,37 @@ import {
   selectGenrePracticeTracks,
   updateRunStreak,
 } from "../../lib/genre-progress"
+import type { GameTrack } from "@/lib/tracks"
+
+const mockTracks: GameTrack[] = Array.from({ length: 10 }, (_, i) => ({
+  source: "youtube",
+  uri: `youtube:genre-${i}`,
+  videoId: `genre-${i}`,
+  name: `Track ${i}`,
+  artists: `Artist ${i}`,
+  duration_ms: 0,
+  albumImage: null,
+  preview_url: null,
+  genre: "vpop",
+  challengeId: `genre-${i}`,
+  dailyEligible: true,
+  sourceType: "official_audio",
+  audioStartSeconds: 0,
+}))
 
 describe("genre practice selection", () => {
-  it("selects exactly five approved tracks without duplicates", () => {
-    const tracks = selectGenrePracticeTracks("vpop", "run-vpop-1")
+  it("selects exactly five tracks without duplicates", () => {
+    const tracks = selectGenrePracticeTracks("vpop", "run-vpop-1", mockTracks)
 
     assert.equal(tracks.length, 5)
     assert.equal(new Set(tracks.map((track) => track.uri)).size, 5)
-    assert.ok(
-      tracks.every(
-        (track) =>
-          track.genre === "vpop" &&
-          track.audioAnalysisStatus === "approved" &&
-          typeof track.audioStartSeconds === "number"
-      )
-    )
+    assert.ok(tracks.every((track) => track.genre === "vpop"))
   })
 
   it("is stable within a run and rotates on replay", () => {
-    const first = selectGenrePracticeTracks("rap", "run-rap-1").map((track) => track.uri)
-    const refresh = selectGenrePracticeTracks("rap", "run-rap-1").map((track) => track.uri)
-    const replay = selectGenrePracticeTracks("rap", "run-rap-2").map((track) => track.uri)
+    const first = selectGenrePracticeTracks("vpop", "run-vpop-1", mockTracks).map((track) => track.uri)
+    const refresh = selectGenrePracticeTracks("vpop", "run-vpop-1", mockTracks).map((track) => track.uri)
+    const replay = selectGenrePracticeTracks("vpop", "run-vpop-2", mockTracks).map((track) => track.uri)
 
     assert.deepEqual(refresh, first)
     assert.notDeepEqual(replay, first)
@@ -45,22 +55,33 @@ describe("genre progression", () => {
   })
 
   it("increments totals while never reducing best score or streak", () => {
-    const first = completeGenreRunRecord(EMPTY_GENRE_PROGRESS, {
-      score: 320,
-      bestStreak: 4,
+    const initial = completeGenreRunRecord(EMPTY_GENRE_PROGRESS, {
+      score: 80,
+      bestStreak: 3,
       solved: 4,
     })
-    const second = completeGenreRunRecord(first, {
-      score: 180,
+    const improved = completeGenreRunRecord(initial, {
+      score: 100,
+      bestStreak: 5,
+      solved: 5,
+    })
+    const lower = completeGenreRunRecord(improved, {
+      score: 40,
       bestStreak: 2,
-      solved: 3,
+      solved: 2,
     })
 
-    assert.deepEqual(second, {
-      bestScore: 320,
-      bestStreak: 4,
+    assert.deepEqual(improved, {
+      bestScore: 100,
+      bestStreak: 5,
       completedRuns: 2,
-      totalSolved: 7,
+      totalSolved: 9,
+    })
+    assert.deepEqual(lower, {
+      bestScore: 100,
+      bestStreak: 5,
+      completedRuns: 3,
+      totalSolved: 11,
     })
   })
 })

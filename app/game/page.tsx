@@ -33,6 +33,7 @@ import {
   readDailyProgress,
   type DailyProgressState,
 } from "@/lib/daily-progress"
+import { getTrackResultId } from "@/lib/game-state"
 import {
   createRunId,
   isGenreSession,
@@ -50,6 +51,7 @@ import {
 import { isCorrectGuess } from "@/lib/guessing"
 import { getGameNavigation, hasGameProgress } from "@/lib/game-navigation"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
+import { getYouTubeAudioCacheKey } from "@/lib/youtube"
 import {
   getLyricsTrackId,
   readRecentLyricsTrackIds,
@@ -61,6 +63,7 @@ import {
   copyShareText,
   resolveShareUrl,
 } from "@/lib/sharing"
+import { CURATED_TRACKS } from "@/lib/curated-tracks"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
@@ -76,9 +79,11 @@ function normalizeSearchText(value: string) {
 
 function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSuggestion[] {
   const normalizedQuery = normalizeSearchText(query)
-  if (normalizedQuery.length < 3) return []
+  if (normalizedQuery.length < 2) return []
 
-  return tracks
+  const searchPool = CURATED_TRACKS
+
+  return searchPool
     .map((track) => {
       const title = normalizeSearchText(track.name)
       const artists = normalizeSearchText(track.artists)
@@ -193,6 +198,13 @@ export default function GamePage() {
   const [dailyProgress, setDailyProgress] =
     useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const roundActionLockRef = useRef(false)
+  const nextActionLockRef = useRef(false)
+  const finalizeRunRef = useRef(false)
+  const suggestionsAbortControllerRef = useRef<AbortController | null>(null)
+  const suggestionsRequestIdRef = useRef(0)
+  const [isRoundActionPending, setIsRoundActionPending] = useState(false)
+  const [isNextPending, setIsNextPending] = useState(false)
   const gameMode: GameMode = session?.playbackMode ?? "audio"
   const dailyDate = session?.dateKey ?? null
   const isLyricsMode = gameMode === "lyrics"
@@ -219,6 +231,13 @@ export default function GamePage() {
   } = useGameState({ tracks, tracksLoading, session })
 
   const currentTrack = tracks[currentIndex]
+  const isTrackResolved = Boolean(
+    currentTrack &&
+      trackResults.some((result) => result.trackId === getTrackResultId(currentTrack))
+  )
+  const isRunComplete = playlistComplete || session?.status === "completed"
+  const isRoundLocked =
+    isRunComplete || isRoundActionPending || isNextPending || showModal || isTrackResolved
   const navigation = getGameNavigation(session)
 
   const playback = useAudioPlayback({
@@ -230,6 +249,7 @@ export default function GamePage() {
   useEffect(() => {
     const nextSession = readGameSession(localStorage)
     setSession(nextSession)
+    setPlaylistComplete(nextSession?.status === "completed")
     if (isGenreSession(nextSession)) {
       setGenreProgress(readGenreProgress(localStorage, nextSession.genre))
     }
@@ -248,28 +268,40 @@ export default function GamePage() {
     setIsLoading(false)
   }, [router, sessionLoaded, tracks.length, tracksLoading])
 
+  const cancelSearchSuggestions = useCallback(() => {
+    suggestionsRequestIdRef.current += 1
+    suggestionsAbortControllerRef.current?.abort()
+    suggestionsAbortControllerRef.current = null
+    setIsSearching(false)
+  }, [])
+
   const fetchSearchSuggestions = useCallback(
     async (query: string) => {
+      const requestId = ++suggestionsRequestIdRef.current
+      suggestionsAbortControllerRef.current?.abort()
+
       if (!query.trim()) {
+        suggestionsAbortControllerRef.current = null
         setSuggestions([])
+        setIsSearching(false)
         return
       }
 
+      const controller = new AbortController()
+      suggestionsAbortControllerRef.current = controller
+      const localSuggestions = getLocalTrackSuggestions(query, tracks)
+      setSuggestions(localSuggestions)
       setIsSearching(true)
+
       try {
-        if (gameMode === "lyrics") {
-          setSuggestions(getLocalTrackSuggestions(query, tracks))
-          return
-        }
+        if (localSuggestions.length >= 6) return
 
-        const localSuggestions = getLocalTrackSuggestions(query, tracks)
+        const response = await fetch(
+          `/api/youtube/suggestions?q=${encodeURIComponent(query)}`,
+          { signal: controller.signal }
+        )
 
-        if (localSuggestions.length >= 4) {
-          setSuggestions(localSuggestions)
-          return
-        }
-
-        const response = await fetch(`/api/youtube/suggestions?q=${encodeURIComponent(query)}`)
+        if (requestId !== suggestionsRequestIdRef.current || controller.signal.aborted) return
 
         if (response.ok) {
           const data = await response.json()
@@ -282,20 +314,24 @@ export default function GamePage() {
             })
             .slice(0, Math.max(0, 6 - localSuggestions.length))
           setSuggestions([...localSuggestions, ...externalSuggestions])
-        } else {
-          setSuggestions([])
         }
       } catch (error) {
+        if (controller.signal.aborted || requestId !== suggestionsRequestIdRef.current) return
         console.warn("Search failed:", error)
-        setSuggestions([])
       } finally {
-        setIsSearching(false)
+        if (requestId === suggestionsRequestIdRef.current) {
+          setIsSearching(false)
+          if (suggestionsAbortControllerRef.current === controller) {
+            suggestionsAbortControllerRef.current = null
+          }
+        }
       }
     },
     [gameMode, tracks]
   )
 
   useEffect(() => {
+    cancelSearchSuggestions()
     if (selectedUri) return
     const timeout = setTimeout(() => {
       if (guess.trim().length > 2) {
@@ -307,8 +343,17 @@ export default function GamePage() {
       }
     }, 500)
 
-    return () => clearTimeout(timeout)
-  }, [fetchSearchSuggestions, guess, selectedUri])
+    return () => {
+      clearTimeout(timeout)
+      cancelSearchSuggestions()
+    }
+  }, [cancelSearchSuggestions, fetchSearchSuggestions, guess, selectedUri])
+
+  useEffect(() => {
+    cancelSearchSuggestions()
+    setSuggestions([])
+    setShowSuggestions(false)
+  }, [cancelSearchSuggestions, currentIndex])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -334,7 +379,7 @@ export default function GamePage() {
     // If it's a YouTube track, it already has videoId or can be derived, no need to search
     if (nextTrack.source === "youtube") return
 
-    const cacheKey = `songless_yt_cache_${encodeURIComponent(nextTrack.uri.toLowerCase())}`
+    const cacheKey = getYouTubeAudioCacheKey(nextTrack.uri)
     const cachedId = localStorage.getItem(cacheKey)
 
     if (cachedId) return // Already cached
@@ -377,152 +422,194 @@ export default function GamePage() {
   }
 
   const handleGuess = async () => {
-    if (!guess.trim() || !currentTrack) return
-    await stopRoundPlayback()
-
-    const newGuesses = [...guesses, guess]
-    setGuesses(newGuesses)
-    const correctGuess = isCorrectGuess({
-      guess,
-      target: currentTrack,
-      selectedUri,
-      selectedSuggestion,
-    })
-    if (session) {
-      captureProductEvent({
-        name: "guess_submitted",
-        properties: {
-          ...getRunAnalyticsContext(session),
-          trackNumber: currentIndex + 1,
-          stage: currentStage + 1,
-          correct: correctGuess,
-        },
-      })
-    }
-
-    if (correctGuess) {
-      recordCorrectGuess(currentStage, currentTrack, newGuesses)
-      if (session) {
-        captureProductEvent({
-          name: "track_completed",
-          properties: {
-            ...getRunAnalyticsContext(session),
-            trackNumber: currentIndex + 1,
-            stage: currentStage + 1,
-            solved: true,
-            score: stageScores[currentStage] || 0,
-          },
-        })
-      }
-      setModalContent({
-        correct: true,
-        track: currentTrack,
-        guesses: newGuesses,
-        trackIndex: currentIndex,
-        pointsEarned: stageScores[currentStage] || 0,
-      })
-      setShowModal(true)
-    } else if (currentStage < 5) {
-      if (session) {
-        captureProductEvent({
-          name: "clue_advanced",
-          properties: {
-            ...getRunAnalyticsContext(session),
-            trackNumber: currentIndex + 1,
-            stage: currentStage + 2,
-            reason: "wrong",
-          },
-        })
-      }
-      setCurrentStage(currentStage + 1)
-    } else {
-      recordFailedTrack(currentTrack, newGuesses, currentStage)
-      if (session) {
-        captureProductEvent({
-          name: "track_completed",
-          properties: {
-            ...getRunAnalyticsContext(session),
-            trackNumber: currentIndex + 1,
-            stage: currentStage + 1,
-            solved: false,
-            score: 0,
-          },
-        })
-      }
-      setModalContent({
-        correct: false,
-        track: currentTrack,
-        guesses: newGuesses,
-        trackIndex: currentIndex,
-        pointsEarned: 0,
-      })
-      setShowModal(true)
-    }
-
-    resetInput()
-  }
-
-  const handleSkip = async () => {
-    if (!currentTrack) return
-    await stopRoundPlayback()
-
-    const newGuesses = [...guesses, "SKIPPED"]
-    setGuesses(newGuesses)
-
-    if (currentStage < 5) {
-      if (session) {
-        captureProductEvent({
-          name: "clue_advanced",
-          properties: {
-            ...getRunAnalyticsContext(session),
-            trackNumber: currentIndex + 1,
-            stage: currentStage + 2,
-            reason: "skip",
-          },
-        })
-      }
-      setCurrentStage(currentStage + 1)
-    } else {
-      recordFailedTrack(currentTrack, newGuesses, currentStage)
-      if (session) {
-        captureProductEvent({
-          name: "track_completed",
-          properties: {
-            ...getRunAnalyticsContext(session),
-            trackNumber: currentIndex + 1,
-            stage: currentStage + 1,
-            solved: false,
-            score: 0,
-          },
-        })
-      }
-      setModalContent({
-        correct: false,
-        track: currentTrack,
-        guesses: newGuesses,
-        trackIndex: currentIndex,
-        pointsEarned: 0,
-      })
-      setShowModal(true)
-    }
-
-    resetInput()
-  }
-
-  const handleNextSong = async () => {
-    setShowModal(false)
-    await stopRoundPlayback()
-
-    if (currentIndex < tracks.length - 1) {
-      window.setTimeout(() => {
-        setCurrentIndex(currentIndex + 1)
-        resetRound()
-      }, 220)
+    if (
+      !guess.trim() ||
+      !currentTrack ||
+      isRunComplete ||
+      showModal ||
+      isTrackResolved ||
+      roundActionLockRef.current
+    ) {
       return
     }
 
-    window.setTimeout(() => {
+    roundActionLockRef.current = true
+    setIsRoundActionPending(true)
+
+    try {
+      await stopRoundPlayback()
+
+      const newGuesses = [...guesses, guess]
+      setGuesses(newGuesses)
+      const correctGuess = isCorrectGuess({
+        guess,
+        target: currentTrack,
+        selectedUri,
+        selectedSuggestion,
+      })
+      if (session) {
+        captureProductEvent({
+          name: "guess_submitted",
+          properties: {
+            ...getRunAnalyticsContext(session),
+            trackNumber: currentIndex + 1,
+            stage: currentStage + 1,
+            correct: correctGuess,
+          },
+        })
+      }
+
+      if (correctGuess) {
+        recordCorrectGuess(currentStage, currentTrack, newGuesses)
+        if (session) {
+          captureProductEvent({
+            name: "track_completed",
+            properties: {
+              ...getRunAnalyticsContext(session),
+              trackNumber: currentIndex + 1,
+              stage: currentStage + 1,
+              solved: true,
+              score: stageScores[currentStage] || 0,
+            },
+          })
+        }
+        setModalContent({
+          correct: true,
+          track: currentTrack,
+          guesses: newGuesses,
+          trackIndex: currentIndex,
+          pointsEarned: stageScores[currentStage] || 0,
+        })
+        setShowModal(true)
+      } else if (currentStage < 5) {
+        if (session) {
+          captureProductEvent({
+            name: "clue_advanced",
+            properties: {
+              ...getRunAnalyticsContext(session),
+              trackNumber: currentIndex + 1,
+              stage: currentStage + 2,
+              reason: "wrong",
+            },
+          })
+        }
+        setCurrentStage(currentStage + 1)
+      } else {
+        recordFailedTrack(currentTrack, newGuesses, currentStage)
+        if (session) {
+          captureProductEvent({
+            name: "track_completed",
+            properties: {
+              ...getRunAnalyticsContext(session),
+              trackNumber: currentIndex + 1,
+              stage: currentStage + 1,
+              solved: false,
+              score: 0,
+            },
+          })
+        }
+        setModalContent({
+          correct: false,
+          track: currentTrack,
+          guesses: newGuesses,
+          trackIndex: currentIndex,
+          pointsEarned: 0,
+        })
+        setShowModal(true)
+      }
+
+      resetInput()
+    } finally {
+      roundActionLockRef.current = false
+      setIsRoundActionPending(false)
+    }
+  }
+
+  const handleSkip = async () => {
+    if (
+      !currentTrack ||
+      isRunComplete ||
+      showModal ||
+      isTrackResolved ||
+      roundActionLockRef.current
+    ) {
+      return
+    }
+
+    roundActionLockRef.current = true
+    setIsRoundActionPending(true)
+
+    try {
+      await stopRoundPlayback()
+
+      const newGuesses = [...guesses, "SKIPPED"]
+      setGuesses(newGuesses)
+
+      if (currentStage < 5) {
+        if (session) {
+          captureProductEvent({
+            name: "clue_advanced",
+            properties: {
+              ...getRunAnalyticsContext(session),
+              trackNumber: currentIndex + 1,
+              stage: currentStage + 2,
+              reason: "skip",
+            },
+          })
+        }
+        setCurrentStage(currentStage + 1)
+      } else {
+        recordFailedTrack(currentTrack, newGuesses, currentStage)
+        if (session) {
+          captureProductEvent({
+            name: "track_completed",
+            properties: {
+              ...getRunAnalyticsContext(session),
+              trackNumber: currentIndex + 1,
+              stage: currentStage + 1,
+              solved: false,
+              score: 0,
+            },
+          })
+        }
+        setModalContent({
+          correct: false,
+          track: currentTrack,
+          guesses: newGuesses,
+          trackIndex: currentIndex,
+          pointsEarned: 0,
+        })
+        setShowModal(true)
+      }
+
+      resetInput()
+    } finally {
+      roundActionLockRef.current = false
+      setIsRoundActionPending(false)
+    }
+  }
+
+  const handleNextSong = async () => {
+    if (!showModal || nextActionLockRef.current || isRunComplete) return
+
+    nextActionLockRef.current = true
+    setIsNextPending(true)
+
+    try {
+      setShowModal(false)
+      await stopRoundPlayback()
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 220))
+
+      if (currentIndex < tracks.length - 1) {
+        setCurrentIndex(currentIndex + 1)
+        resetRound()
+        return
+      }
+
+      if (finalizeRunRef.current) return
+      finalizeRunRef.current = true
       resetRound()
+
       if (isGenreSession(session)) {
         setGenreProgress(
           completeGenreRun(localStorage, session.genre, {
@@ -560,9 +647,17 @@ export default function GamePage() {
             ...(durationMs === undefined ? {} : { durationMs }),
           },
         })
+        const completedSession = writeGameSession(localStorage, {
+          ...session,
+          status: "completed",
+        })
+        setSession(completedSession)
       }
       setPlaylistComplete(true)
-    }, 220)
+    } finally {
+      nextActionLockRef.current = false
+      setIsNextPending(false)
+    }
   }
 
   const exitRun = () => {
@@ -617,6 +712,7 @@ export default function GamePage() {
         ...session,
         runId,
         startedAt: new Date().toISOString(),
+        status: "active",
       })
       if (genreReplay) {
         setTracks(genreReplay.tracks)
@@ -627,6 +723,7 @@ export default function GamePage() {
       setSession(nextSession)
     }
     resetGame()
+    finalizeRunRef.current = false
     setPlaylistComplete(false)
   }
 
@@ -718,7 +815,7 @@ export default function GamePage() {
     )
   }
 
-  if (playlistComplete) {
+  if (isRunComplete) {
     const averageStage = correctCount > 0 ? (solvedStageTotal / correctCount).toFixed(1) : "-"
     const maxScore = tracks.length * stageScores[0]
     const accuracy = tracks.length > 0 ? Math.round((correctCount / tracks.length) * 100) : 0
@@ -969,6 +1066,7 @@ export default function GamePage() {
           suggestions={suggestions}
           isSearching={isSearching}
           showSuggestions={showSuggestions}
+          isDisabled={isRoundLocked}
           searchContainerRef={searchContainerRef}
           onGuessChange={(value) => {
             setGuess(value)
@@ -977,6 +1075,7 @@ export default function GamePage() {
           }}
           onFocus={() => setShowSuggestions(true)}
           onSelectSuggestion={(suggestion) => {
+            cancelSearchSuggestions()
             setGuess(`${suggestion.artists} - ${suggestion.name}`)
             setSelectedUri(suggestion.uri)
             setSelectedSuggestion(suggestion)
@@ -989,10 +1088,10 @@ export default function GamePage() {
 
         <GameModal
           isOpen={showModal}
-          onClose={() => setShowModal(false)}
           correct={modalContent.correct}
           track={modalContent.track}
           onNext={handleNextSong}
+          isNextPending={isNextPending}
           onBack={() => {
             setShowModal(false)
             requestExitRun()

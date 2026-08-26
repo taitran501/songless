@@ -3,6 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { GameTrack } from "@/lib/tracks"
 import { isYoutubeTrack } from "@/lib/tracks"
+import {
+  getYouTubeAudioCacheKey,
+  shouldRetryCachedYouTubeSource,
+  type YouTubeAudioSourceKind,
+} from "@/lib/youtube"
 
 declare global {
   interface Window {
@@ -37,6 +42,11 @@ export function useAudioPlayback({
   const [loadingStep, setLoadingStep] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const ytPlayerRef = useRef<any>(null)
+  const youtubeResolveControllerRef = useRef<AbortController | null>(null)
+  const youtubeSourceKindRef = useRef<YouTubeAudioSourceKind>("resolved")
+  const youtubeRetryCountRef = useRef(0)
+  const youtubePlaybackFailedRef = useRef(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const playSessionIdRef = useRef(0)
@@ -52,6 +62,24 @@ export function useAudioPlayback({
     }
   }, [])
 
+  const destroyYoutubePlayer = useCallback(() => {
+    const player = ytPlayerRef.current
+    if (player) {
+      try {
+        player.stopVideo?.()
+      } catch {
+        // The player may already be gone during a route transition.
+      }
+      try {
+        player.destroy?.()
+      } catch {
+        // The player may already be gone during a route transition.
+      }
+    }
+    ytPlayerRef.current = null
+    setYtPlayer(null)
+  }, [])
+
   const clearPlaybackTimers = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
@@ -65,14 +93,15 @@ export function useAudioPlayback({
 
   const pauseCurrentPlayback = useCallback(async () => {
     audioRef.current?.pause()
-    if (ytPlayer && typeof ytPlayer.pauseVideo === "function") {
+    const player = ytPlayerRef.current
+    if (player && typeof player.pauseVideo === "function") {
       try {
-        ytPlayer.pauseVideo()
+        player.pauseVideo()
       } catch (error) {
         console.warn("Could not pause YouTube player:", error)
       }
     }
-  }, [ytPlayer])
+  }, [])
 
   const resetPlayback = useCallback(() => {
     playSessionIdRef.current++
@@ -121,7 +150,10 @@ export function useAudioPlayback({
     if (!existingScript) {
       const tag = document.createElement("script")
       tag.src = "https://www.youtube.com/iframe_api"
-      tag.onerror = () => setPlaybackError("Could not load the YouTube player.")
+      tag.onerror = () => {
+        youtubePlaybackFailedRef.current = true
+        setPlaybackError("Could not load the YouTube player.")
+      }
       const firstScriptTag = document.getElementsByTagName("script")[0]
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag)
     }
@@ -134,6 +166,7 @@ export function useAudioPlayback({
 
     const timeout = setTimeout(() => {
       if (!window.YT?.Player) {
+        youtubePlaybackFailedRef.current = true
         setPlaybackError("Could not load the YouTube player.")
       }
     }, 10000)
@@ -141,34 +174,18 @@ export function useAudioPlayback({
     return () => clearTimeout(timeout)
   }, [needsYoutube, ytReady])
 
-  useEffect(() => {
-    setYoutubeVideoId(null)
+  const resolveYouTubeFallback = useCallback((track: GameTrack, cacheKey: string) => {
+    youtubeResolveControllerRef.current?.abort()
+    const controller = new AbortController()
+    youtubeResolveControllerRef.current = controller
+    youtubePlaybackFailedRef.current = false
     setPlaybackError(null)
-    setIsResolvingAudio(false)
-    setLoadingStep(null)
-    resetPlayback()
-
-    if (!currentTrack) return
-    if (isYoutubeTrack(currentTrack)) {
-      setYoutubeVideoId(currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, ""))
-      return
-    }
-    if (currentTrack.preview_url) return
-
-    let isMounted = true
-    const cacheKey = `songless_yt_cache_${encodeURIComponent(currentTrack.uri.toLowerCase())}`
-    const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
-
-    if (cachedId) {
-      setLoadingStep("Loading YouTube player...")
-      setYoutubeVideoId(cachedId)
-      return
-    }
-
     setIsResolvingAudio(true)
     setLoadingStep("Searching YouTube for audio source...")
-    fetch(
-      `/api/youtube/search?title=${encodeURIComponent(currentTrack.name)}&artists=${encodeURIComponent(currentTrack.artists)}`
+
+    void fetch(
+      `/api/youtube/search?title=${encodeURIComponent(track.name)}&artists=${encodeURIComponent(track.artists)}`,
+      { signal: controller.signal }
     )
       .then(async (response) => {
         const data = await response.json()
@@ -178,38 +195,81 @@ export function useAudioPlayback({
         return data
       })
       .then((data) => {
-        if (isMounted && data.videoId) {
-          try {
-            localStorage.setItem(cacheKey, data.videoId)
-          } catch (e) {
-            console.warn("Could not save to localStorage cache:", e)
-          }
-          setLoadingStep("Loading YouTube player...")
-          setYoutubeVideoId(data.videoId)
+        if (controller.signal.aborted) return
+        if (!data.videoId) {
+          throw new Error("No playable audio source was found for this track.")
         }
-        if (isMounted && !data.videoId) {
-          setPlaybackError("No playable audio source was found for this track.")
-          setLoadingStep(null)
+        try {
+          localStorage.setItem(cacheKey, data.videoId)
+        } catch (error) {
+          console.warn("Could not save to localStorage cache:", error)
         }
+        youtubeSourceKindRef.current = "resolved"
+        setLoadingStep("Loading YouTube player...")
+        setYoutubeVideoId(data.videoId)
       })
       .catch((error) => {
+        if (controller.signal.aborted) return
         console.error("YouTube search failed:", error)
-        if (isMounted) {
-          setPlaybackError("No playable audio source was found for this track.")
-          setLoadingStep(null)
-        }
+        youtubePlaybackFailedRef.current = true
+        setPlaybackError("No playable audio source was found for this track.")
+        setLoadingStep(null)
       })
       .finally(() => {
-        if (isMounted) setIsResolvingAudio(false)
+        if (youtubeResolveControllerRef.current === controller) {
+          youtubeResolveControllerRef.current = null
+          setIsResolvingAudio(false)
+        }
       })
-
-    return () => {
-      isMounted = false
-    }
-  }, [currentTrack, resetPlayback])
+  }, [])
 
   useEffect(() => {
-    if (!ytReady || !youtubeVideoId || ytPlayer) return
+    youtubeResolveControllerRef.current?.abort()
+    destroyYoutubePlayer()
+    youtubeRetryCountRef.current = 0
+    youtubeSourceKindRef.current = "resolved"
+    youtubePlaybackFailedRef.current = false
+    setYoutubeVideoId(null)
+    setPlaybackError(null)
+    setIsResolvingAudio(false)
+    setLoadingStep(null)
+    resetPlayback()
+
+    if (!currentTrack) return
+    if (isYoutubeTrack(currentTrack)) {
+      youtubeSourceKindRef.current = "direct"
+      setYoutubeVideoId(currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, ""))
+      return
+    }
+    if (currentTrack.preview_url) return
+
+    const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
+    const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
+
+    if (cachedId) {
+      youtubeSourceKindRef.current = "cached"
+      setLoadingStep("Loading YouTube player...")
+      setYoutubeVideoId(cachedId)
+      return
+    }
+
+    resolveYouTubeFallback(currentTrack, cacheKey)
+
+    return () => {
+      youtubeResolveControllerRef.current?.abort()
+      destroyYoutubePlayer()
+    }
+  }, [currentTrack, destroyYoutubePlayer, resetPlayback, resolveYouTubeFallback])
+
+  useEffect(() => {
+    return () => {
+      youtubeResolveControllerRef.current?.abort()
+      destroyYoutubePlayer()
+    }
+  }, [destroyYoutubePlayer])
+
+  useEffect(() => {
+    if (!ytReady || !youtubeVideoId || ytPlayerRef.current) return
 
     let isMounted = true
 
@@ -222,7 +282,38 @@ export function useAudioPlayback({
         return
       }
 
-      new window.YT.Player("youtube-player", {
+      const handleYoutubeError = () => {
+        if (!isMounted) return
+        youtubePlaybackFailedRef.current = true
+        playSessionIdRef.current++
+        clearPlaybackTimers()
+        setIsPlaying(false)
+        setIsPaused(false)
+
+        const canRetryCachedSource =
+          currentTrack &&
+          !isYoutubeTrack(currentTrack) &&
+          !currentTrack.preview_url &&
+          shouldRetryCachedYouTubeSource(
+            youtubeSourceKindRef.current,
+            youtubeRetryCountRef.current
+          )
+
+        if (canRetryCachedSource && currentTrack) {
+          youtubeRetryCountRef.current += 1
+          const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
+          localStorage.removeItem(cacheKey)
+          destroyYoutubePlayer()
+          setYoutubeVideoId(null)
+          resolveYouTubeFallback(currentTrack, cacheKey)
+          return
+        }
+
+        setLoadingStep(null)
+        setPlaybackError("This YouTube audio source could not be played.")
+      }
+
+      const player = new window.YT.Player("youtube-player", {
         height: "200",
         width: "200",
         videoId: youtubeVideoId,
@@ -244,11 +335,30 @@ export function useAudioPlayback({
             } catch {
               // YouTube may reject volume control in some browsers.
             }
+            ytPlayerRef.current = event.target
             setYtPlayer(event.target)
             setLoadingStep(null)
           },
+          onError: handleYoutubeError,
+          onStateChange: (event: any) => {
+            if (!isMounted || youtubePlaybackFailedRef.current) return
+            if (event.data === 1) {
+              setIsPlaying(true)
+              setIsPaused(false)
+            } else if (event.data === 2) {
+              setIsPlaying(false)
+              setIsPaused(true)
+            } else if (event.data === 0) {
+              setIsPlaying(false)
+              setIsPaused(false)
+              setProgress(100)
+              clearPlaybackTimers()
+            }
+          },
         },
       })
+
+      if (player && !ytPlayerRef.current) ytPlayerRef.current = player
     }
 
     initPlayer()
@@ -256,7 +366,7 @@ export function useAudioPlayback({
     return () => {
       isMounted = false
     }
-  }, [ytReady, youtubeVideoId, ytPlayer])
+  }, [clearPlaybackTimers, currentTrack, destroyYoutubePlayer, resolveYouTubeFallback, ytReady, youtubeVideoId])
 
   useEffect(() => {
     if (ytPlayer && youtubeVideoId) {
@@ -309,23 +419,37 @@ export function useAudioPlayback({
       return true
     }
 
-    if (youtubeVideoId && ytPlayer && typeof ytPlayer.playVideo === "function") {
+    const player = ytPlayerRef.current
+    if (
+      youtubeVideoId &&
+      player &&
+      typeof player.playVideo === "function" &&
+      !youtubePlaybackFailedRef.current
+    ) {
       try {
         const targetSeconds = audioStartSeconds + positionMs / 1000
-        ytPlayer.unMute?.()
-        ytPlayer.setVolume?.(100)
-        ytPlayer.pauseVideo?.()
-        ytPlayer.seekTo(targetSeconds, true)
+        player.unMute?.()
+        player.setVolume?.(100)
+        player.pauseVideo?.()
+        player.seekTo(targetSeconds, true)
         await wait(80)
-        if (currentPlaySessionId !== playSessionIdRef.current) return false
-        ytPlayer.playVideo()
+        if (currentPlaySessionId !== playSessionIdRef.current || youtubePlaybackFailedRef.current) return false
+        player.playVideo()
         await wait(120)
-        if (currentPlaySessionId === playSessionIdRef.current) {
-          ytPlayer.unMute?.()
-          ytPlayer.setVolume?.(100)
-          ytPlayer.playVideo()
+        if (
+          currentPlaySessionId === playSessionIdRef.current &&
+          !youtubePlaybackFailedRef.current
+        ) {
+          player.unMute?.()
+          player.setVolume?.(100)
+          player.playVideo()
         }
-        if (currentPlaySessionId !== playSessionIdRef.current) return false
+        if (
+          currentPlaySessionId !== playSessionIdRef.current ||
+          youtubePlaybackFailedRef.current
+        ) {
+          return false
+        }
         setIsPlaying(true)
         setIsPaused(false)
         setProgress((positionMs / duration) * 100)
@@ -333,6 +457,7 @@ export function useAudioPlayback({
         return true
       } catch (error) {
         console.warn("Could not play YouTube video:", error)
+        youtubePlaybackFailedRef.current = true
         setPlaybackError("This YouTube audio source could not be played.")
       }
     }

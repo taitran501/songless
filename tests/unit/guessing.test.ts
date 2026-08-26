@@ -75,4 +75,25 @@ describe("guessing", () => {
       true
     )
   })
+
+  it("normalizes Vietnamese accented titles and diacritics", () => {
+    assert.equal(normalizeGuessText("Nàng Thơ"), "nang tho")
+    assert.equal(normalizeGuessText("Có Chắc Yêu Là Đây"), "co chac yeu la day")
+    assert.equal(normalizeGuessText("Đen Vâu"), "den vau")
+    assert.equal(normalizeGuessText("Bước Qua Nhau"), "buoc qua nhau")
+
+    const vnTarget: GameTrack = {
+      source: "youtube",
+      uri: "youtube:nang-tho",
+      name: "Nang Tho",
+      artists: "Hoang Dung",
+      duration_ms: 0,
+      albumImage: null,
+      preview_url: null,
+    }
+
+    assert.equal(isCorrectGuess({ guess: "Nàng Thơ", target: vnTarget }), true)
+    assert.equal(isCorrectGuess({ guess: "nang tho", target: vnTarget }), true)
+  })
 })
+

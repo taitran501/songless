@@ -19,10 +19,10 @@ import type { GameMode, GameTrack } from "@/lib/tracks"
 
 interface GameModalProps {
   isOpen: boolean
-  onClose: () => void
   correct: boolean
   track: GameTrack | null
-  onNext: () => void
+  onNext: () => void | Promise<void>
+  isNextPending?: boolean
   onBack?: () => void
   backLabel?: string
   guesses: string[]
@@ -37,10 +37,10 @@ interface GameModalProps {
 
 export function GameModal({
   isOpen,
-  onClose,
   correct,
   track,
   onNext,
+  isNextPending = false,
   onBack,
   backLabel = "Back to Playlist Setup",
   guesses = [],
@@ -109,8 +109,8 @@ export function GameModal({
   const isLyricsMode = mode === "lyrics"
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center outline-none [&_[data-slot=dialog-close]]:text-white [&_[data-slot=dialog-close]]:opacity-90 ${
+    <Dialog open={isOpen} onOpenChange={() => undefined}>
+      <DialogContent showCloseButton={false} className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center outline-none ${
         correct
           ? "bg-[#090d16]/90 border-[#10b981] shadow-[0_0_25px_rgba(16,185,129,0.3),inset_0_0_15px_rgba(16,185,129,0.1)]"
           : "bg-[#090d16]/90 border-[#ef4444] shadow-[0_0_25px_rgba(239,68,68,0.3),inset_0_0_15px_rgba(239,68,68,0.1)]"
@@ -166,6 +166,8 @@ export function GameModal({
           {/* Primary Action */}
           <Button
             onClick={onNext}
+            disabled={isNextPending}
+            aria-busy={isNextPending}
             className={`w-full bg-[#10b981] hover:bg-[#10b981]/80 hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] hover:scale-[1.02] active:scale-[0.98] text-black font-bold py-5 rounded-lg shadow-lg transition-all duration-300 flex items-center justify-center gap-2`}
           >
             {nextLabel}
@@ -175,6 +177,7 @@ export function GameModal({
           {/* Secondary Action */}
           <Button
             onClick={handleShare}
+            disabled={isNextPending}
             className="w-full bg-white/[0.03] border border-white/20 text-white backdrop-blur-md font-semibold py-5 rounded-lg hover:bg-white/10 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-2"
           >
             <Share2 className="w-4 h-4" />
@@ -186,7 +189,8 @@ export function GameModal({
           {onBack && (
             <button
               onClick={onBack}
-              className="w-full cursor-pointer text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center"
+              disabled={isNextPending}
+              className="w-full cursor-pointer text-[#9ca3af] hover:text-white text-xs py-2 transition-colors duration-300 active:scale-95 underline-offset-4 hover:underline text-center disabled:cursor-not-allowed disabled:opacity-50"
             >
               {backLabel}
             </button>

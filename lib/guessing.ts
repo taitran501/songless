@@ -14,6 +14,10 @@ export interface GuessInput {
 export function normalizeGuessText(value: string): string {
   return value
     .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s*\((feat|ft|featuring|with)\.?.*?\)/g, "")
     .replace(/\s*-\s*(remaster(ed)?|radio edit|single version|official audio|official music video|official video|music video|lyric video|lyrics|audio|mv).*$/g, "")
     .replace(/\s*\((remaster(ed)?|radio edit|single version|official audio|official music video|official video|music video|lyric video|lyrics|audio|mv).*?\)/g, "")
@@ -58,10 +62,9 @@ export function isCorrectGuess({ guess, target, selectedUri, selectedSuggestion 
 
   if (!cleanGuess || !cleanTarget) return false
   if (cleanGuess === cleanTarget) return true
-  if (cleanGuess.length < 4) return false
 
-  const minPartialLength = Math.ceil(cleanTarget.length * 0.6)
-  if (cleanGuess.length < minPartialLength) return false
+  const combined = normalizeGuessText(`${target.artists} ${target.name}`)
+  if (cleanGuess.length >= 4 && includesTitle(combined, cleanGuess)) return true
 
-  return cleanTarget.includes(cleanGuess) || cleanGuess.includes(cleanTarget)
+  return false
 }

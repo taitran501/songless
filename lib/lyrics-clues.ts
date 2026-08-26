@@ -12,6 +12,7 @@ export interface LyricsSnippetQuality {
 }
 
 function removeVietnameseTones(str: string) {
+  if (typeof str !== "string") return ""
   return str
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -31,13 +32,13 @@ function isTargetWord(word: string, tokens: Set<string>) {
   return cleanWord.length > 0 && tokens.has(cleanWord)
 }
 
-function titleTokens(track: Pick<GameTrack, "name">) {
-  const titleTokens = clueTokens(track.name, 2)
-  return new Set(titleTokens.map((token) => token.toLowerCase()))
+function titleTokens(track?: { name?: string }) {
+  const tokens = clueTokens(track?.name || "", 2)
+  return new Set(tokens.map((token) => token.toLowerCase()))
 }
 
-function titleAndArtistTokens(track: Pick<GameTrack, "name" | "artists">) {
-  const artistTokens = clueTokens(track.artists, 1)
+function titleAndArtistTokens(track?: { name?: string; artists?: string; artist?: string }) {
+  const artistTokens = clueTokens(track?.artists || track?.artist || "", 1)
   return new Set([...titleTokens(track), ...artistTokens.map((token) => token.toLowerCase())])
 }
 

@@ -11,6 +11,7 @@ const gameSessionSchema = z.object({
   playbackMode: z.enum(["audio", "lyrics"]),
   id: z.string().min(1),
   runId: z.string().min(1),
+  status: z.enum(["active", "completed"]).default("active"),
   startedAt: z.string().datetime().optional(),
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   genre: z.enum(["usuk", "vpop", "rap"]).optional(),
@@ -18,7 +19,12 @@ const gameSessionSchema = z.object({
 })
 
 export type GameSessionKind = z.infer<typeof gameSessionSchema>["kind"]
+export type GameSessionStatus = z.infer<typeof gameSessionSchema>["status"]
 export type GameSessionMeta = z.infer<typeof gameSessionSchema>
+export type GameSessionInput = Omit<GameSessionMeta, "runId" | "status"> & {
+  runId?: string
+  status?: GameSessionStatus
+}
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">
 
@@ -31,11 +37,12 @@ export function createRunId(prefix = "run") {
 }
 
 export function createGameSession(
-  input: Omit<GameSessionMeta, "runId"> & { runId?: string }
+  input: GameSessionInput
 ): GameSessionMeta {
   return gameSessionSchema.parse({
     ...input,
     runId: input.runId ?? createRunId(input.kind),
+    status: input.status ?? "active",
     startedAt: input.startedAt ?? new Date().toISOString(),
   })
 }
@@ -46,7 +53,7 @@ function clearLegacySessionKeys(storage: StorageLike) {
   storage.removeItem(LEGACY_PLAYLIST_ID_STORAGE_KEY)
 }
 
-export function writeGameSession(storage: StorageLike, session: GameSessionMeta) {
+export function writeGameSession(storage: StorageLike, session: GameSessionInput) {
   const parsed = gameSessionSchema.parse(session)
   storage.setItem(GAME_SESSION_STORAGE_KEY, JSON.stringify(parsed))
   clearLegacySessionKeys(storage)

@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   GAME_SESSION_STORAGE_KEY,
+  createGameSession,
   getGameStateStorageKey,
   readGameSession,
   writeGameSession,
@@ -81,6 +82,22 @@ describe("game session persistence", () => {
     })
 
     assert.equal(readGameSession(storage)?.runId, session.runId)
+    assert.equal(session.status, "active")
+  })
+
+  it("round-trips a completed session status", () => {
+    const storage = new MemoryStorage()
+    const session = createGameSession({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "playlist-completed",
+      runId: "run-completed",
+      status: "completed",
+    })
+
+    writeGameSession(storage, session)
+
+    assert.equal(readGameSession(storage)?.status, "completed")
   })
 })
 

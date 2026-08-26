@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 const mockTracks = [
   {
@@ -73,6 +73,16 @@ const mockLyricsTrack = {
 
 async function seedStorage(page: Page, values: Record<string, string>) {
   await page.addInitScript((entries) => {
+    for (const [key, value] of Object.entries(entries)) {
+      window.localStorage.setItem(key, value)
+    }
+  }, values)
+}
+
+async function seedStorageOnce(page: Page, values: Record<string, string>) {
+  await page.addInitScript((entries) => {
+    if (window.sessionStorage.getItem("songless_e2e_seeded_once") === "1") return
+    window.sessionStorage.setItem("songless_e2e_seeded_once", "1")
     for (const [key, value] of Object.entries(entries)) {
       window.localStorage.setItem(key, value)
     }
@@ -233,6 +243,63 @@ async function mockSeekSensitiveYouTubeIframe(page: Page) {
         })();
       `,
     })
+  })
+}
+
+async function mockErroringYouTubeIframe(page: Page, errorsBeforeSuccess = 1) {
+  await page.route("https://www.youtube.com/iframe_api", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: `
+        (() => {
+          window.__ytEvents = { cue: [], play: 0, pause: 0, seek: [], errors: 0, destroys: 0 };
+          class MockYouTubePlayer {
+            constructor(id, config) {
+              this.id = id;
+              this.config = config;
+              setTimeout(() => {
+                if (config.events && config.events.onReady) {
+                  config.events.onReady({ target: this });
+                }
+              }, 0);
+            }
+            cueVideoById(videoId) { window.__ytEvents.cue.push(videoId); }
+            seekTo(seconds) { window.__ytEvents.seek.push(seconds); }
+            playVideo() {
+              window.__ytEvents.play += 1;
+              if (window.__ytEvents.play <= ${errorsBeforeSuccess}) {
+                window.__ytEvents.errors += 1;
+                this.config.events?.onError?.({ target: this, data: 150 });
+                return;
+              }
+              this.config.events?.onStateChange?.({ target: this, data: 1 });
+            }
+            pauseVideo() {
+              window.__ytEvents.pause += 1;
+              this.config.events?.onStateChange?.({ target: this, data: 2 });
+            }
+            stopVideo() {}
+            destroy() { window.__ytEvents.destroys += 1; }
+            unMute() {}
+            setVolume() {}
+          }
+          window.YT = { Player: MockYouTubePlayer };
+          setTimeout(() => {
+            if (window.onYouTubeIframeAPIReady) {
+              window.onYouTubeIframeAPIReady();
+            }
+          }, 0);
+        })();
+      `,
+    })
+  })
+}
+
+async function dispatchSynchronousClicks(locator: Locator) {
+  await locator.evaluate((element) => {
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }))
   })
 }
 
@@ -1118,4 +1185,383 @@ test("supports the main game controls with mocked audio playback", async ({ page
   await expect(
     page.getByRole("button", { name: "BACK TO PLAYLIST SETUP", exact: true }).last()
   ).toBeVisible()
+})
+
+test("does not duplicate a synchronous double submit", async ({ page }) => {
+  await mockHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "guess-lock",
+      runId: "guess-lock-run",
+    }),
+  })
+
+  await page.goto("/game")
+  const input = page.getByPlaceholder("Know the song? Search artist or title...")
+  await input.fill("First Song")
+  await dispatchSynchronousClicks(page.getByRole("button", { name: "SUBMIT GUESS" }))
+
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    return JSON.parse(window.localStorage.getItem(`songless_state_${session?.runId}`) || "null")
+  })).toMatchObject({ score: 100, correctCount: 1, trackResults: [{ trackId: "spotify:track:one" }] })
+})
+
+test("does not duplicate a synchronous double skip at the final clue", async ({ page }) => {
+  await mockHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "skip-lock",
+      runId: "skip-lock-run",
+    }),
+  })
+
+  await page.goto("/game")
+  const skip = page.getByRole("button", { name: /SKIP/ })
+  for (let stage = 1; stage < 6; stage++) {
+    await skip.click()
+    await expect(page.getByText(`${stage + 1} / 6`)).toBeVisible()
+  }
+  await dispatchSynchronousClicks(skip)
+
+  await expect(page.getByRole("heading", { name: /game over/i })).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    return JSON.parse(window.localStorage.getItem(`songless_state_${session?.runId}`) || "null")
+  })).toMatchObject({ score: 0, correctCount: 0, trackResults: [{ trackId: "spotify:track:one", status: "failed" }] })
+})
+
+test("advances only once after a synchronous double next-song click", async ({ page }) => {
+  await mockHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "next-lock",
+      runId: "next-lock-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("First Song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await dispatchSynchronousClicks(page.getByRole("button", { name: "NEXT SONG" }))
+
+  await expect(page.getByText("Track 2 of 2")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => {
+    const session = JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")
+    return JSON.parse(window.localStorage.getItem(`songless_state_${session?.runId}`) || "null")
+  })).toMatchObject({ currentIndex: 1, trackResults: [{ trackId: "spotify:track:one" }] })
+})
+
+test("keeps a resolved result modal open and finalizes a daily run once", async ({ page }) => {
+  await mockHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "daily",
+      playbackMode: "audio",
+      id: "daily-audio-2026-08-01",
+      runId: "daily-lock-run",
+      dateKey: "2026-08-01",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("First Song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+
+  await dispatchSynchronousClicks(page.getByRole("button", { name: "VIEW SUMMARY" }))
+  await expect(page.getByText("Final Score")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => {
+    return JSON.parse(window.localStorage.getItem("songless_daily_progress_v1") || "null")
+      ?.history?.[0]?.completedRuns
+  })).toBe(1)
+})
+
+test("restores the completed summary after a direct game refresh", async ({ page }) => {
+  await mockHtmlAudio(page)
+  await seedStorageOnce(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "refresh-complete",
+      runId: "refresh-complete-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("First Song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+  await page.getByRole("button", { name: "VIEW SUMMARY" }).click()
+  await expect(page.getByText("Final Score")).toBeVisible()
+
+  await expect.poll(async () => page.evaluate(() => {
+    return JSON.parse(window.localStorage.getItem("songless_session_v2") || "null")?.status
+  })).toBe("completed")
+  await page.reload()
+
+  await expect(page.getByText("Final Score")).toBeVisible()
+  await expect(page.getByText("1 / 1")).toBeVisible()
+})
+
+test("does not show a continue banner for a completed session", async ({ page }) => {
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "completed-home",
+      runId: "completed-home-run",
+      status: "completed",
+    }),
+    songless_state_completed_home_run: JSON.stringify({
+      currentIndex: 0,
+      currentStage: 0,
+      guesses: [],
+      score: 100,
+      correctCount: 1,
+      solvedStageTotal: 1,
+      currentStreak: 1,
+      bestRunStreak: 1,
+      trackResults: [{
+        trackId: "spotify:track:one",
+        status: "solved",
+        attempts: ["correct"],
+        completedStage: 0,
+        points: 100,
+      }],
+    }),
+  })
+
+  await page.goto("/")
+  await expect(page.getByTestId("continue-run-banner")).toHaveCount(0)
+})
+
+test("replaces a stale YouTube cache entry and retries once", async ({ page }) => {
+  await mockErroringYouTubeIframe(page, 1)
+  let searchCalls = 0
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
+    searchCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        videoId: "replacement123",
+        matchedTitle: "No Preview Song",
+        matchedArtists: "Fallback Artist",
+        matchScore: 140,
+      }),
+    })
+  })
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "stale-cache",
+      runId: "stale-cache-run",
+    }),
+    "songless_yt_cache_spotify%3Atrack%3Ano-preview": "stale123",
+  })
+
+  await page.goto("/game")
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(0)
+  await expect.poll(async () => searchCalls).toBe(1)
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.cue)).toContain("replacement123")
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("songless_yt_cache_spotify%3Atrack%3Ano-preview"))).toBe("replacement123")
+
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.errors)).toBe(1)
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(1)
+})
+
+test("keeps Skip available after YouTube retry failure without looping", async ({ page }) => {
+  await mockErroringYouTubeIframe(page, 2)
+  let searchCalls = 0
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
+    searchCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ videoId: "replacement123" }),
+    })
+  })
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "retry-failure",
+      runId: "retry-failure-run",
+    }),
+    "songless_yt_cache_spotify%3Atrack%3Ano-preview": "stale123",
+  })
+
+  await page.goto("/game")
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.cue)).toContain("replacement123")
+  await page.getByLabel("Play preview").click()
+
+  await expect(page.getByText("This YouTube audio source could not be played.")).toBeVisible()
+  await expect.poll(async () => searchCalls).toBe(1)
+  await expect(page.getByRole("button", { name: /SKIP/ })).toBeEnabled()
+})
+
+test("does not fallback-search a direct YouTube error", async ({ page }) => {
+  await mockErroringYouTubeIframe(page, 1)
+  let searchCalls = 0
+  await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
+    searchCalls += 1
+    await route.continue()
+  })
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockYoutubeTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "direct-error",
+      runId: "direct-error-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByLabel("Play preview").click()
+  await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(0)
+  await expect(page.getByText("This YouTube audio source could not be played.")).toBeVisible()
+  expect(searchCalls).toBe(0)
+  await expect(page.getByRole("button", { name: /SKIP/ })).toBeEnabled()
+})
+
+test("keeps only the newest suggestion response", async ({ page }) => {
+  await mockYouTubeIframe(page)
+  let releaseOld!: () => void
+  let oldRequestSeen = false
+  const oldResponse = new Promise<void>((resolve) => {
+    releaseOld = resolve
+  })
+  await page.route("**/api/youtube/suggestions?q=*", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q")
+    if (query === "old") {
+      oldRequestSeen = true
+      await oldResponse
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([{ uri: "youtube:old", videoId: "old", name: "Old Song", artists: "Old Artist", albumImage: null }]),
+      })
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ uri: "youtube:new", videoId: "new", name: "New Song", artists: "New Artist", albumImage: null }]),
+    })
+  })
+  await seedStorage(page, {
+    game_tracks: JSON.stringify(mockYoutubeTracks),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "suggestion-race",
+      runId: "suggestion-race-run",
+    }),
+  })
+
+  await page.goto("/game")
+  const input = page.getByPlaceholder("Know the song? Search artist or title...")
+  await input.fill("old")
+  await expect.poll(async () => oldRequestSeen).toBe(true)
+  await input.fill("new")
+  await expect(page.getByText("New Song")).toBeVisible()
+  releaseOld()
+  await page.waitForTimeout(100)
+  await expect(page.getByText("Old Song")).toHaveCount(0)
+})
+
+test("keeps Playlist All unlimited beyond fifty tracks", async ({ page }) => {
+  await mockHtmlAudio(page)
+  const manyTracks = Array.from({ length: 51 }, (_, index) => ({
+    ...mockTracks[0],
+    uri: `spotify:track:many-${index}`,
+    name: `Many Song ${index + 1}`,
+  }))
+  await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manyTracks) })
+  })
+
+  await page.goto("/playlist")
+  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("playlist123")
+  await page.getByRole("button", { name: "Load Playlist" }).click()
+  await expect(page.getByText("Found 51 valid tracks in this playlist")).toBeVisible()
+  await page.getByRole("button", { name: "All", exact: true }).click()
+  await page.getByRole("button", { name: "START GAME" }).click()
+
+  await expect(page.getByText("Track 1 of 51")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => JSON.parse(window.localStorage.getItem("game_tracks") || "[]").length)).toBe(51)
+})
+
+test("keeps the audio game usable on a narrow mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "mobile-game",
+      runId: "mobile-game-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await expect(page.getByTestId("guess-action-panel")).toBeVisible()
+  await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.getByPlaceholder("Know the song? Search artist or title...").fill("First Song")
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await expect(page.getByRole("heading", { name: /solved/i })).toBeVisible()
+
+  const nextButton = page.getByRole("button", { name: "VIEW SUMMARY" })
+  await nextButton.scrollIntoViewIfNeeded()
+  const box = await nextButton.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  await nextButton.click()
+  await expect(page.getByText("Final Score")).toBeVisible()
+})
+
+test("keeps Skip enabled on mobile when preview playback fails", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockBrokenHtmlAudio(page)
+  await seedStorage(page, {
+    game_tracks: JSON.stringify([mockTracks[0]]),
+    songless_session_v2: JSON.stringify({
+      kind: "playlist",
+      playbackMode: "audio",
+      id: "mobile-audio-error",
+      runId: "mobile-audio-error-run",
+    }),
+  })
+
+  await page.goto("/game")
+  await page.getByLabel("Play preview").click()
+  await expect(page.getByText("This audio preview could not be played.")).toBeVisible()
+  await expect(page.getByRole("button", { name: /SKIP/ })).toBeEnabled()
+  await expect.poll(async () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })

@@ -1,9 +1,11 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
+  getYouTubeAudioCacheKey,
   parseYouTubePlaylistHtml,
   parseYouTubeSearchHtml,
   resolveYouTubeAudioSourceFromSuggestions,
+  shouldRetryCachedYouTubeSource,
 } from "@/lib/youtube"
 
 const html = `
@@ -67,6 +69,17 @@ var ytInitialData = {
 };</script></html>`
 
 describe("YouTube parser", () => {
+  it("builds a stable cache key and limits cached-source retry", () => {
+    assert.equal(
+      getYouTubeAudioCacheKey("Spotify:Track:ABC"),
+      "songless_yt_cache_spotify%3Atrack%3Aabc"
+    )
+    assert.equal(shouldRetryCachedYouTubeSource("cached", 0), true)
+    assert.equal(shouldRetryCachedYouTubeSource("cached", 1), false)
+    assert.equal(shouldRetryCachedYouTubeSource("resolved", 0), false)
+    assert.equal(shouldRetryCachedYouTubeSource("direct", 0), false)
+  })
+
   it("parses lockup playlist HTML", () => {
     const result = parseYouTubePlaylistHtml(html)
 

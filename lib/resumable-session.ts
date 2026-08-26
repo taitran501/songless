@@ -24,6 +24,10 @@ export function readResumableGameSession(
 ): ResumableGameSession | null {
   const session = readGameSession(storage)
   if (!session) return null
+  if (session.status === "completed") {
+    clearGameSession(storage, session)
+    return null
+  }
 
   const rawTracks = storage.getItem("game_tracks")
   if (!rawTracks) return null

@@ -8,6 +8,7 @@ import {
   Flame,
   Headphones,
   ListMusic,
+  Loader2,
   Music,
   Trophy,
 } from "lucide-react"
@@ -133,9 +134,29 @@ export default function HomePage() {
     pendingStart?.()
   }
 
-  const startDailyChallenge = () => {
+  const [isDailyLoading, setIsDailyLoading] = useState(false)
+
+  const startDailyChallenge = async () => {
     const dateKey = getUtcDateKey()
-    const tracks = selectDailyTracks(dateKey)
+    setIsDailyLoading(true)
+    let tracks: any[] = []
+
+    try {
+      const res = await fetch(`/api/daily?date=${dateKey}`)
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data.tracks) && data.tracks.length >= 3) {
+          tracks = data.tracks
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch dynamic daily, using fallback:", err)
+    }
+
+    if (tracks.length === 0) {
+      tracks = selectDailyTracks(dateKey)
+    }
+
     const playlistId = `daily-audio-${dateKey}`
     const session = createGameSession({
       kind: "daily",
@@ -154,6 +175,7 @@ export default function HomePage() {
         totalTracks: tracks.length,
       },
     })
+    setIsDailyLoading(false)
     router.push("/game")
   }
 
@@ -294,9 +316,19 @@ export default function HomePage() {
                 </p>
                 <Button
                   onClick={() => requestNewRun(startDailyChallenge)}
+                  disabled={isDailyLoading}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
-                  {todayDailyRecord ? "Play Again" : "Start Today's Challenge"}
+                  {isDailyLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading today's hits...
+                    </>
+                  ) : todayDailyRecord ? (
+                    "Play Again"
+                  ) : (
+                    "Start Today's Challenge"
+                  )}
                 </Button>
               </div>
             </div>

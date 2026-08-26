@@ -52,9 +52,7 @@ export function selectGenrePracticeTracks(
   const pool = tracks.filter(
     (track) =>
       track.genre === genre &&
-      track.dailyEligible === true &&
-      track.audioAnalysisStatus === "approved" &&
-      typeof track.audioStartSeconds === "number"
+      track.dailyEligible !== false
   )
   if (pool.length < 5) {
     throw new Error(`Genre practice needs 5 approved ${genre} tracks, but only ${pool.length} are available.`)

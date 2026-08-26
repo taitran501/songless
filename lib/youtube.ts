@@ -37,6 +37,19 @@ export interface YouTubeAudioSourceMatch {
   matchScore: number
 }
 
+export type YouTubeAudioSourceKind = "direct" | "cached" | "resolved"
+
+export function getYouTubeAudioCacheKey(trackUri: string) {
+  return `songless_yt_cache_${encodeURIComponent(trackUri.toLowerCase())}`
+}
+
+export function shouldRetryCachedYouTubeSource(
+  sourceKind: YouTubeAudioSourceKind,
+  retryCount: number
+) {
+  return sourceKind === "cached" && retryCount === 0
+}
+
 export function extractYouTubePlaylistId(input: string): string | null {
   if (!input) return null
   const trimmed = input.trim()
