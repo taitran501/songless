@@ -9,8 +9,6 @@ function runCheck(overrides: Record<string, string | undefined> = {}) {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     NODE_ENV: "test",
-    SPOTIFY_CLIENT_ID: "test-client-id",
-    SPOTIFY_CLIENT_SECRET: "test-client-secret",
   }
 
   for (const key of [
@@ -33,10 +31,11 @@ function runCheck(overrides: Record<string, string | undefined> = {}) {
 }
 
 test("deployment environment contract", async (t) => {
-  await t.test("allows Preview without Redis but emits a fail-closed warning", () => {
+  await t.test("allows Preview without optional Spotify or Redis but emits warnings", () => {
     const result = runCheck({ VERCEL_ENV: "preview" })
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /WARNING Daily Redis is not configured for Preview/)
+    assert.match(result.stdout, /OPTIONAL SPOTIFY_CLIENT_ID/)
   })
 
   await t.test("requires Redis and CRON_SECRET in Production", () => {
@@ -55,5 +54,14 @@ test("deployment environment contract", async (t) => {
     })
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /All environment variables are set/)
+  })
+
+  await t.test("warns on partial Spotify credentials without blocking deployment", () => {
+    const result = runCheck({
+      VERCEL_ENV: "preview",
+      SPOTIFY_CLIENT_ID: "test-client-id",
+    })
+    assert.equal(result.status, 0, result.stderr)
+    assert.match(result.stdout, /WARNING Spotify credentials are incomplete/)
   })
 })
