@@ -6,8 +6,14 @@ const optionalEnvVars = [
   'SPOTIFY_CLIENT_ID',
   'SPOTIFY_CLIENT_SECRET',
 ]
-const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
-const isVercelPreview = process.env.VERCEL_ENV === 'preview'
+const vercelEnvironment = process.env.VERCEL_ENV
+// Vercel sets NODE_ENV=production for both Preview and Production builds.
+// Prefer VERCEL_ENV when it is available so Preview does not inherit the
+// Production-only Redis/cron gate.
+const isProduction = vercelEnvironment
+  ? vercelEnvironment === 'production'
+  : process.env.NODE_ENV === 'production'
+const isVercelPreview = vercelEnvironment === 'preview'
 
 const redisConfigured =
   Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||

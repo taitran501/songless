@@ -32,7 +32,7 @@ function runCheck(overrides: Record<string, string | undefined> = {}) {
 
 test("deployment environment contract", async (t) => {
   await t.test("allows Preview without optional Spotify or Redis but emits warnings", () => {
-    const result = runCheck({ VERCEL_ENV: "preview" })
+    const result = runCheck({ VERCEL_ENV: "preview", NODE_ENV: "production" })
     assert.equal(result.status, 0, result.stderr)
     assert.match(result.stdout, /WARNING Daily Redis is not configured for Preview/)
     assert.match(result.stdout, /OPTIONAL SPOTIFY_CLIENT_ID/)
