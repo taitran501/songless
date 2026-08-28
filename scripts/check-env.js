@@ -5,6 +5,20 @@ const requiredEnvVars = [
   'SPOTIFY_CLIENT_ID',
   'SPOTIFY_CLIENT_SECRET'
 ]
+const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
+const isVercelPreview = process.env.VERCEL_ENV === 'preview'
+const requiresDailyRedis = isProduction || isVercelPreview
+
+const redisConfigured =
+  Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
+  Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+
+const deploymentEnvVars = requiresDailyRedis
+  ? [
+      ...(redisConfigured ? [] : ['UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL + KV_REST_API_TOKEN)']),
+      ...(isProduction && !process.env.CRON_SECRET ? ['CRON_SECRET'] : []),
+    ]
+  : []
 
 console.log('Checking environment variables...')
 
@@ -21,16 +35,22 @@ requiredEnvVars.forEach(varName => {
   }
 })
 
+deploymentEnvVars.forEach(varName => {
+  missingVars.push(varName)
+  console.log(`MISSING ${varName}`)
+})
+
 console.log('\nSummary:')
-console.log(`Present: ${presentVars.length}/${requiredEnvVars.length}`)
-console.log(`Missing: ${missingVars.length}/${requiredEnvVars.length}`)
+const totalChecks = requiredEnvVars.length + deploymentEnvVars.length
+console.log(`Present: ${presentVars.length}/${totalChecks}`)
+console.log(`Missing: ${missingVars.length}/${totalChecks}`)
 
 if (missingVars.length > 0) {
   console.log('\nMissing environment variables:')
   missingVars.forEach(varName => {
     console.log(`   - ${varName}`)
   })
-  console.log('\nAdd these to your Vercel environment variables.')
+  console.log('\nAdd these to your Vercel environment variables before deploying.')
   process.exit(1)
 } else {
   console.log('\nAll environment variables are set. Ready to deploy.')

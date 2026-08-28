@@ -120,6 +120,7 @@ export function clearGameSession(storage: StorageLike, session?: GameSessionMeta
   if (activeSession) {
     storage.removeItem(getGameStateStorageKey(activeSession))
     storage.removeItem(`songless_state_${activeSession.id}`)
+    storage.removeItem(`songless_modal_${activeSession.runId}`)
   }
   storage.removeItem(GAME_SESSION_STORAGE_KEY)
   storage.removeItem("game_tracks")

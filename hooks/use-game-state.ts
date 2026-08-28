@@ -38,6 +38,9 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
   const [trackResults, setTrackResults] = useState<TrackRunResult[]>([])
   const [hydratedStateKey, setHydratedStateKey] = useState<string | null>(null)
 
+  const stateStorageKey = session ? getGameStateStorageKey(session) : null
+  const isStateHydrated = Boolean(stateStorageKey && hydratedStateKey === stateStorageKey)
+
   useEffect(() => {
     if (tracks.length === 0 || tracksLoading || !session) return
     const stateKey = getGameStateStorageKey(session)
@@ -173,6 +176,7 @@ export function useGameState({ tracks, tracksLoading, session }: UseGameStateOpt
     recordFailedTrack,
     resetRound,
     resetGame,
+    isStateHydrated,
     stageDurations: STAGE_DURATIONS,
     stageScores: STAGE_SCORES,
   }

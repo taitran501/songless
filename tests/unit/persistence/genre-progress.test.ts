@@ -5,7 +5,7 @@ import {
   EMPTY_GENRE_PROGRESS,
   selectGenrePracticeTracks,
   updateRunStreak,
-} from "../../lib/genre-progress"
+} from "@/lib/genre-progress"
 import type { GameTrack } from "@/lib/tracks"
 
 const mockTracks: GameTrack[] = Array.from({ length: 10 }, (_, i) => ({
@@ -18,10 +18,13 @@ const mockTracks: GameTrack[] = Array.from({ length: 10 }, (_, i) => ({
   albumImage: null,
   preview_url: null,
   genre: "vpop",
+  genreEvidence: "allowlist",
   challengeId: `genre-${i}`,
   dailyEligible: true,
   sourceType: "official_audio",
   audioStartSeconds: 0,
+  audioFirstManifest: true,
+  audioAnalysisStatus: "approved",
 }))
 
 describe("genre practice selection", () => {
@@ -40,6 +43,30 @@ describe("genre practice selection", () => {
 
     assert.deepEqual(refresh, first)
     assert.notDeepEqual(replay, first)
+  })
+
+  it("does not select unreviewed audio tracks", () => {
+    const unreviewed = mockTracks.map((track) => ({
+      ...track,
+      audioAnalysisStatus: undefined,
+    }))
+
+    assert.throws(
+      () => selectGenrePracticeTracks("vpop", "unreviewed-run", unreviewed),
+      /approved vpop/i
+    )
+  })
+
+  it("requires explicit audio-first evidence for a zero start", () => {
+    const withoutAudioFirstEvidence = mockTracks.map((track) => ({
+      ...track,
+      audioFirstManifest: false,
+    }))
+
+    assert.throws(
+      () => selectGenrePracticeTracks("vpop", "zero-start-run", withoutAudioFirstEvidence),
+      /approved vpop/i
+    )
   })
 })
 

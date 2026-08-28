@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertTriangle, Loader2, Pause, Play, Youtube } from "lucide-react"
+import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Youtube } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface PlaybackPanelProps {
@@ -8,11 +8,14 @@ interface PlaybackPanelProps {
   isResolvingAudio: boolean
   loadingStep: string | null
   playbackError: string | null
+  canRetryAudio: boolean
+  isRetryingAudio: boolean
   isPlaying: boolean
   isPaused: boolean
   onPlay: () => void
   onPause: () => void
   onResume: () => void
+  onRetry: () => void | Promise<void>
 }
 
 export function PlaybackPanel({
@@ -20,11 +23,14 @@ export function PlaybackPanel({
   isResolvingAudio,
   loadingStep,
   playbackError,
+  canRetryAudio,
+  isRetryingAudio,
   isPlaying,
   isPaused,
   onPlay,
   onPause,
   onResume,
+  onRetry,
 }: PlaybackPanelProps) {
   const isLoading = !isPlayerReady && !playbackError
 
@@ -123,10 +129,32 @@ export function PlaybackPanel({
       )}
 
       {/* Error message */}
-      {playbackError && (
-        <p className="max-w-xs text-center text-sm text-[#ef4444]">
-          {playbackError}
-        </p>
+      {(playbackError || isRetryingAudio) && (
+        <div className="flex flex-col items-center gap-3">
+          <p
+            role={playbackError ? "alert" : "status"}
+            className="max-w-xs text-center text-sm text-[#ef4444]"
+          >
+            {playbackError ?? "Searching for a verified fallback audio source..."}
+          </p>
+          {(canRetryAudio || isRetryingAudio) && (
+            <Button
+              type="button"
+              data-testid="audio-retry"
+              onClick={() => void onRetry()}
+              disabled={isRetryingAudio}
+              variant="outline"
+              className="h-10 rounded-xl border-[#ef4444]/40 bg-[#ef4444]/10 px-5 text-sm font-semibold text-[#fecaca] hover:bg-[#ef4444]/20"
+            >
+              {isRetryingAudio ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              )}
+              {isRetryingAudio ? "RETRYING AUDIO..." : "RETRY AUDIO"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )

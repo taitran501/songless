@@ -77,6 +77,10 @@ async function main() {
       env: {
         ...process.env,
         SONGLESS_E2E_EXTERNAL_SERVER: "1",
+        SONGLESS_E2E_INCLUDE_LEGACY:
+          testArgs.some((arg) => /tests[\\/]e2e[\\/]legacy/.test(arg))
+            ? "1"
+            : process.env.SONGLESS_E2E_INCLUDE_LEGACY,
       },
       stdio: "inherit",
       windowsHide: true,

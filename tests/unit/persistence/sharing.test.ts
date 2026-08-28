@@ -5,7 +5,7 @@ import {
   buildShareText,
   copyShareText,
   resolveShareUrl,
-} from "../../lib/sharing"
+} from "@/lib/sharing"
 
 describe("result sharing", () => {
   it("uses the configured URL or falls back to the current origin", () => {

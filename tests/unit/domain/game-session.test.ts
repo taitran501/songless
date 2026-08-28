@@ -6,12 +6,12 @@ import {
   getGameStateStorageKey,
   readGameSession,
   writeGameSession,
-} from "../../lib/game-session"
+} from "@/lib/game-session"
 import {
   appendTrackResult,
   buildTrackRunResult,
   parseSavedGameState,
-} from "../../lib/game-state"
+} from "@/lib/game-state"
 
 class MemoryStorage {
   private values = new Map<string, string>()

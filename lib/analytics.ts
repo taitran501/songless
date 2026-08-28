@@ -9,6 +9,8 @@ export type RunAnalyticsContext = {
   playlistSource?: "spotify" | "youtube"
 }
 
+export type AudioRetryOutcome = "requested" | "succeeded" | "exhausted"
+
 export type ProductEvent =
   | { name: "home_viewed"; properties?: Record<string, never> }
   | { name: "run_started"; properties: RunAnalyticsContext & { totalTracks: number } }
@@ -54,6 +56,14 @@ export type ProductEvent =
       name: "result_shared"
       properties: RunAnalyticsContext & { scope: "track" | "run"; success: boolean }
     }
+  | {
+      name: "audio_retry"
+      properties: RunAnalyticsContext & {
+        trackNumber: number
+        success?: boolean
+        outcome?: AudioRetryOutcome
+      }
+    }
 
 export interface AnalyticsCaptureClient {
   capture(name: string, properties?: Record<string, unknown>): unknown
@@ -75,6 +85,7 @@ const ALLOWED_PROPERTIES = new Set([
   "durationMs",
   "scope",
   "success",
+  "outcome",
 ])
 
 let initialized = false

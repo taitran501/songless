@@ -1,4 +1,4 @@
-import type { GameTrack } from "@/lib/tracks"
+import type { GameTrack, TrackAudioSourceType } from "@/lib/tracks"
 
 const YOUTUBE_TIMEOUT_MS = 10000
 const YOUTUBE_HEADERS = {
@@ -35,6 +35,8 @@ export interface YouTubeAudioSourceMatch {
   matchedTitle: string
   matchedArtists: string
   matchScore: number
+  sourceType: TrackAudioSourceType
+  rawTitle: string
 }
 
 export type YouTubeAudioSourceKind = "direct" | "cached" | "resolved"
@@ -355,7 +357,34 @@ function normalizeMatchText(value: string) {
 function matchTokens(value: string) {
   return normalizeMatchText(value)
     .split(" ")
-    .filter((token) => token.length >= 2)
+    .filter((token) => token.length > 0)
+}
+
+function artistParts(value: string) {
+  return value
+    .replace(/\((?:feat\.?|ft\.?|featuring|with)[^)]+\)/gi, "")
+    .split(/,|&|\s+(?:feat\.?|ft\.?|featuring|with|x)\s+/i)
+    .map((part) => normalizeMatchText(part))
+    .filter(Boolean)
+}
+
+function artistMatches(target: string, candidateValues: readonly string[]) {
+  const targetParts = artistParts(target)
+  if (targetParts.length === 0) return false
+
+  const candidateParts = candidateValues.flatMap(artistParts)
+  return targetParts.some((targetPart) =>
+    candidateParts.some(
+      (candidatePart) =>
+        candidatePart === targetPart ||
+        (targetPart.length >= 3 && candidatePart.includes(targetPart)) ||
+        (candidatePart.length >= 3 && targetPart.includes(candidatePart))
+    )
+  )
+}
+
+function artistFromRawTitle(rawTitle: string, fallbackArtist: string) {
+  return splitArtistAndTitle(cleanSuggestionTitle(rawTitle), fallbackArtist).artist
 }
 
 const REJECTED_SOURCE_QUALIFIERS = [
@@ -376,16 +405,35 @@ function sourcePriority(rawTitle: string) {
   return 0
 }
 
+export function getYouTubeSourceType(rawTitle: string): TrackAudioSourceType {
+  const normalized = normalizeMatchText(rawTitle)
+  if (normalized.includes("official audio")) return "official_audio"
+  if (normalized.includes("lyric video") || normalized.includes("lyrics")) return "lyric_video"
+  if (normalized.includes("official music video") || normalized.includes("official video")) {
+    return "music_video"
+  }
+  if (
+    normalized.includes("live") ||
+    normalized.includes("performance") ||
+    normalized.includes("concert")
+  ) {
+    return "performance"
+  }
+  return "unknown"
+}
+
 export function resolveYouTubeAudioSourceFromSuggestions(
-  input: { title: string; artists: string },
+  input: { title: string; artists: string; excludeVideoIds?: readonly string[] },
   suggestions: YouTubeSearchSuggestion[]
 ): YouTubeAudioSourceMatch | null {
   const targetTitle = normalizeMatchText(input.title)
   const targetArtistTokens = new Set(matchTokens(input.artists))
+  const excludedVideoIds = new Set(input.excludeVideoIds || [])
   if (!targetTitle || targetArtistTokens.size === 0) return null
 
   const matches = suggestions
     .map((suggestion) => {
+      if (excludedVideoIds.has(suggestion.videoId)) return null
       const candidateTitle = normalizeMatchText(suggestion.name)
       const rawTitle = suggestion.rawTitle || `${suggestion.artists} - ${suggestion.name}`
       const normalizedRawTitle = normalizeMatchText(rawTitle)
@@ -402,14 +450,13 @@ export function resolveYouTubeAudioSourceFromSuggestions(
       )
       if (hasRejectedQualifier) return null
 
-      const candidateArtistTokens = new Set([
-        ...matchTokens(suggestion.artists),
-        ...matchTokens(rawTitle),
-      ])
-      const artistMatches = [...targetArtistTokens].some((token) =>
-        candidateArtistTokens.has(token)
-      )
-      if (!artistMatches) return null
+      const candidateArtists = [
+        suggestion.artists,
+        artistFromRawTitle(rawTitle, suggestion.artists),
+      ]
+      if (!artistMatches(input.artists, candidateArtists)) return null
+
+      const candidateArtistTokens = new Set(candidateArtists.flatMap(matchTokens))
 
       const exactTitleScore = candidateTitle === targetTitle ? 100 : 80
       const artistScore = [...targetArtistTokens].filter((token) =>
@@ -421,6 +468,8 @@ export function resolveYouTubeAudioSourceFromSuggestions(
         matchedTitle: suggestion.name,
         matchedArtists: suggestion.artists,
         matchScore: exactTitleScore + artistScore + sourcePriority(rawTitle),
+        sourceType: getYouTubeSourceType(rawTitle),
+        rawTitle,
       }
     })
     .filter((match): match is YouTubeAudioSourceMatch => match !== null)
@@ -431,7 +480,8 @@ export function resolveYouTubeAudioSourceFromSuggestions(
 
 export async function searchYouTubeVideo(
   title: string,
-  artists: string
+  artists: string,
+  options: { excludeVideoIds?: readonly string[] } = {}
 ): Promise<YouTubeAudioSourceMatch> {
   const trimmedTitle = title.trim()
   const trimmedArtists = artists.trim()
@@ -444,7 +494,11 @@ export async function searchYouTubeVideo(
   )
   const suggestions = parseYouTubeSearchHtml(html, 10)
   const match = resolveYouTubeAudioSourceFromSuggestions(
-    { title: trimmedTitle, artists: trimmedArtists },
+    {
+      title: trimmedTitle,
+      artists: trimmedArtists,
+      excludeVideoIds: options.excludeVideoIds,
+    },
     suggestions
   )
   if (!match) {
