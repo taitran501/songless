@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
   getYouTubeAudioCacheKey,
+  getYouTubeSourceType,
   parseYouTubePlaylistHtml,
   parseYouTubeSearchHtml,
   resolveYouTubeAudioSourceFromSuggestions,
@@ -182,5 +183,52 @@ describe("YouTube parser", () => {
     )
 
     assert.equal(match, null)
+  })
+
+  it("rejects a same-title result when the artist identity is different", () => {
+    const match = resolveYouTubeAudioSourceFromSuggestions(
+      { title: "Home", artists: "Artist A" },
+      [
+        {
+          videoId: "homeartistb",
+          uri: "youtube:homeartistb",
+          name: "Home",
+          artists: "Artist B",
+          albumImage: null,
+          rawTitle: "Artist B - Home (Official Audio)",
+        },
+      ]
+    )
+
+    assert.equal(match, null)
+  })
+
+  it("excludes a failed video and derives source type from the raw title", () => {
+    const match = resolveYouTubeAudioSourceFromSuggestions(
+      { title: "Home", artists: "Artist A", excludeVideoIds: ["homebad"] },
+      [
+        {
+          videoId: "homebad",
+          uri: "youtube:homebad",
+          name: "Home",
+          artists: "Artist A",
+          albumImage: null,
+          rawTitle: "Artist A - Home (Official Audio)",
+        },
+        {
+          videoId: "homegood",
+          uri: "youtube:homegood",
+          name: "Home",
+          artists: "Artist A",
+          albumImage: null,
+          rawTitle: "Artist A - Home (Official Music Video)",
+        },
+      ]
+    )
+
+    assert.equal(match?.videoId, "homegood")
+    assert.equal(match?.sourceType, "music_video")
+    assert.equal(getYouTubeSourceType("Artist A - Home live performance"), "performance")
+    assert.equal(getYouTubeSourceType("Artist A - Home"), "unknown")
   })
 })

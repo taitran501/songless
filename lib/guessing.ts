@@ -42,8 +42,26 @@ function isSelectedSuggestionMatch(
   const targetTitle = normalizeGuessText(target.name)
   const selectedTitle = normalizeGuessText(selectedSuggestion.name)
   const selectedCombined = normalizeGuessText(`${selectedSuggestion.artists} ${selectedSuggestion.name}`)
+  const targetArtist = normalizeGuessText(target.artists)
+  const selectedArtist = normalizeGuessText(selectedSuggestion.artists)
 
-  if (!targetTitle || !selectedTitle) return false
+  if (!targetTitle || !selectedTitle || !targetArtist || !selectedArtist) return false
+
+  const targetArtistTokens = targetArtist.split(" ").filter((token) => token && token !== "the")
+  const selectedArtistTokens = selectedArtist.split(" ").filter((token) => token && token !== "the")
+  const selectedArtistIsSubset = selectedArtistTokens.every((token) =>
+    targetArtistTokens.includes(token)
+  )
+  const targetArtistIsSubset = targetArtistTokens.every((token) =>
+    selectedArtistTokens.includes(token)
+  )
+  if (
+    targetArtistTokens.join(" ") !== selectedArtistTokens.join(" ") &&
+    !(selectedArtistTokens.length >= 2 && selectedArtistIsSubset) &&
+    !(targetArtistTokens.length >= 2 && targetArtistIsSubset)
+  ) {
+    return false
+  }
   if (selectedTitle === targetTitle) return true
   if (targetTitle.length < 4) return includesTitle(selectedCombined, targetTitle)
 
@@ -55,7 +73,11 @@ function isSelectedSuggestionMatch(
 
 export function isCorrectGuess({ guess, target, selectedUri, selectedSuggestion }: GuessInput): boolean {
   if (selectedUri && selectedUri === target.uri) return true
-  if (isSelectedSuggestionMatch(target, selectedSuggestion)) return true
+  // A selected suggestion is an explicit identity claim.  Do not fall back to
+  // title-only free text when that claim is missing or mismatched; otherwise a
+  // malformed suggestion (for example, one without an artist) can turn into a
+  // false positive merely because its title matches.
+  if (selectedSuggestion) return isSelectedSuggestionMatch(target, selectedSuggestion)
 
   const cleanGuess = normalizeGuessText(guess)
   const cleanTarget = normalizeGuessText(target.name)

@@ -3,7 +3,7 @@ import { describe, it } from "node:test"
 import {
   captureProductEvent,
   sanitizeProductEvent,
-} from "../../lib/analytics"
+} from "@/lib/analytics"
 
 describe("privacy-safe product analytics", () => {
   it("is a no-op without an initialized provider", () => {
@@ -61,5 +61,28 @@ describe("privacy-safe product analytics", () => {
       ),
       false
     )
+  })
+
+  it("records retry outcome without song metadata", () => {
+    const sanitized = sanitizeProductEvent({
+      name: "audio_retry",
+      properties: {
+        kind: "playlist",
+        playbackMode: "audio",
+        trackNumber: 2,
+        success: true,
+        outcome: "succeeded",
+        title: "Secret Song",
+        artist: "Secret Artist",
+      },
+    } as never)
+
+    assert.deepEqual(sanitized.properties, {
+      kind: "playlist",
+      playbackMode: "audio",
+      trackNumber: 2,
+      success: true,
+      outcome: "succeeded",
+    })
   })
 })

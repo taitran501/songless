@@ -59,4 +59,24 @@ describe("track normalization", () => {
     assert.equal(track.audioAnalysisStatus, "approved")
     assert.equal(track.audioStartConfidence, 0.91)
   })
+
+  it("does not turn invalid audio metadata into a silent zero default", () => {
+    const [track] = normalizeTracks([
+      {
+        source: "youtube",
+        uri: "youtube:invalid-audio",
+        videoId: "invalid-audio",
+        name: "Invalid Audio",
+        artists: "Artist",
+        duration_ms: 1000,
+        albumImage: null,
+        preview_url: null,
+        audioStartSeconds: "not-a-number",
+        audioStartConfidence: "not-a-number",
+      },
+    ])
+
+    assert.equal(track.audioStartSeconds, undefined)
+    assert.equal(track.audioStartConfidence, undefined)
+  })
 })

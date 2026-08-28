@@ -4,11 +4,12 @@ import { fetchLiveAppleMusicChart } from "@/lib/public-charts"
 import { generateLiveDailyTracks } from "@/lib/dynamic-daily-service"
 
 describe("live charts and autonomous daily pipeline", () => {
-  it("fetches live Apple Music Vietnam charts without API keys", async () => {
-    const tracks = await fetchLiveAppleMusicChart("vn", "vpop", 10)
+  it("fetches live Apple Music Vietnam charts without synthetic genre labels", async () => {
+    const tracks = await fetchLiveAppleMusicChart("vn", 10)
     assert.ok(Array.isArray(tracks), "Should return an array")
     assert.ok(tracks.length > 0, "Should have tracks from live chart")
-    assert.equal(tracks[0].genre, "vpop")
+    assert.equal(tracks[0].region, "vn")
+    assert.equal(tracks[0].genre, undefined)
     assert.ok(tracks[0].name, "Track should have a name")
     assert.ok(tracks[0].artists, "Track should have an artist")
   })

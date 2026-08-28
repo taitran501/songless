@@ -1,0 +1,16 @@
+[
+  {
+    "uri": "youtube:playlist-one",
+    "videoId": "playlist-one",
+    "name": "Playlist One",
+    "artists": "Playlist Artist",
+    "albumImage": null
+  },
+  {
+    "uri": "youtube:unrelated",
+    "videoId": "unrelated",
+    "name": "Unrelated Result",
+    "artists": "Other Artist",
+    "albumImage": null
+  }
+]

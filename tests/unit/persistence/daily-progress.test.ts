@@ -7,8 +7,8 @@ import {
   completeDailyProgress,
   getRecentDailyDays,
   readDailyProgress,
-} from "../../lib/daily-progress"
-import type { TrackRunResult } from "../../lib/game-state"
+} from "@/lib/daily-progress"
+import type { TrackRunResult } from "@/lib/game-state"
 
 class MemoryStorage {
   private values = new Map<string, string>()

@@ -54,37 +54,25 @@ Starting a new Lyrics Quick Mix remembers up to 10 recent tracks locally. Genre 
 
 Completing all three Daily tracks records a local UTC-day streak, personal best, and a rolling 90-day history. Replaying the same day can improve the best score but cannot increment the streak twice.
 
+Daily's three-track snapshot is immutable per UTC date and is stored in managed Redis. A missing snapshot is generated behind a short date-scoped lock; Redis errors fail closed with a retryable `503` instead of silently serving another date or an in-memory substitute. The browser never creates a Daily session until the response passes the snapshot/date/genre/audio contract.
+
+Production emits metadata-safe `DailyMetric` logs for snapshot hits, publication latency, lock races, and rejected genre/audio candidates. No title, artist, guess, or playlist identifier is included. Set `DAILY_METRICS_LOG=1` locally when you need the same diagnostic stream outside Production.
+
 Run summaries can be copied as a six-cell emoji row per track. Shared results contain mode, score, solved count, and streak only; song titles, artists, playlist identifiers, and typed guesses are excluded.
 
 Game exits are mode-aware: Daily, Lyrics, and Genre return home, while custom playlists return to Playlist Setup. Leaving a run after making progress asks for confirmation before clearing it.
 
 ## Adding Daily Songs
 
-Daily tracks use YouTube, but the game starts from the beginning of the music instead of the opening scene of a music video. A local analysis tool helps contributors find that timestamp before adding a song to the Daily pool.
+Daily tracks use YouTube, but the game starts from a reviewed point in the music instead of silently assuming that every video starts with audio.
 
 The catalog is split into:
 
 - `lib/curated-song-seeds.ts`: song, artist, genre, YouTube video ID, source type, and lyric clues.
-- `lib/curated-track-analysis.ts`: detected start time, confidence, review status, and optional manual override.
+- `lib/curated-track-analysis.ts`: detected start time, confidence, review status, audio-first evidence, and optional manual override.
 - `lib/curated-tracks.ts`: merges both sources into runtime tracks and selects the daily mix.
 
-The analyzer checks the first 90 seconds of a video and creates a review report with timestamped YouTube links. Downloaded audio is temporary and is never committed to the repository.
-
-Install `yt-dlp` and `ffmpeg`, then run:
-
-```bash
-npm run analyze:audio-start
-```
-
-Useful options:
-
-```bash
-npm run analyze:audio-start -- --track vpop-see-tinh
-npm run analyze:audio-start -- --limit 5 --no-write
-npm run analyze:audio-start -- --fresh
-```
-
-The script updates `lib/curated-track-analysis.ts`. A manually reviewed timestamp can be used when automatic detection is not accurate enough.
+Audio-start analysis metadata is committed in `lib/curated-track-analysis.ts` and is required for a track to be marked `approved`. A `0` second start is accepted only when the manifest explicitly confirms an audio-first source. Runtime code does not download audio or run an analyzer. When adding a track, update the seed and reviewed analysis metadata together; unreviewed tracks remain out of Daily and Genre selection.
 
 ## Local Setup
 
@@ -106,6 +94,9 @@ Public Spotify playlists use server-side client credentials. Spotify OAuth and p
 | --- | --- | --- |
 | `SPOTIFY_CLIENT_ID` | For public Spotify playlists | Spotify application client ID |
 | `SPOTIFY_CLIENT_SECRET` | For public Spotify playlists | Spotify application client secret |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Preview/Production | Managed Redis REST credentials for Daily snapshots |
+| `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Existing Vercel Redis integration | Compatibility names accepted when the Upstash names are not injected |
+| `CRON_SECRET` | Production | Bearer secret for `/api/cron/daily` |
 | `NEXT_PUBLIC_APP_URL` | No | Canonical URL used in shared results; defaults to the current browser origin |
 | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | No | Enables anonymous product events when used together with `NEXT_PUBLIC_POSTHOG_HOST` |
 | `NEXT_PUBLIC_POSTHOG_HOST` | No | PostHog ingest host for the configured project |
@@ -124,13 +115,17 @@ Open `http://localhost:3000`.
 
 ```bash
 npm run test:unit
+npm run test:integration
 npm run lint
 npx tsc --noEmit
 npm run build
-npm run test:e2e
+npm run test:e2e:smoke
+npm run verify
 ```
 
-Live YouTube matching can be checked manually and is not part of the default CI gates:
+`test:e2e` runs the deterministic browser suite (all modes plus recovery, audio retry, and sharing). The former long-running suite is retained under `tests/e2e/legacy` and can be run explicitly with `npm run test:e2e:legacy`; it depends on live provider behavior and is not a default CI gate. Provider-only Node checks are available with `npm run test:live:unit`.
+
+Live YouTube matching can also be checked manually and is not part of the default CI gates:
 
 ```bash
 npm run smoke:youtube -- --title "Blinding Lights" --artists "The Weeknd"
@@ -149,9 +144,14 @@ hooks/                      Track state, validated game state, and audio playbac
 lib/
   curated-song-seeds.ts     Curated song catalog with multi-snippet lyrics
   curated-track-analysis.ts Static audio-start analysis results
-  curated-tracks.ts         Runtime merge and deterministic daily selection
+  curated-tracks.ts         Runtime merge and deterministic Daily/genre selection
+  daily-snapshot.ts         Versioned snapshot schema, checksum, and invariants
+  daily-snapshot-redis.ts   Managed Redis adapter with put-if-absent and locks
+  daily-response.ts         Client-side Daily payload validation
+  genre-taxonomy.ts         Provider/allowlist genre classification
   audio-start-detector.ts   Audio feature extraction and start detector
   game-session.ts           Session v2 validation and legacy migration
+  game-modal-state.ts       Persisted result-modal checkpoint for refresh recovery
   game-navigation.ts        Mode-aware exit labels, routes, and progress checks
   daily-progress.ts         UTC daily streak and rolling local history
   genre-progress.ts         Five-track genre runs and local progression
@@ -161,10 +161,19 @@ lib/
   lyrics-runs.ts            Five-track Lyrics Quick Mix and recent-track history
   youtube.ts                Playlist parsing and verified fallback matching
 scripts/
-  analyze-audio-start.ts    Local yt-dlp/ffmpeg ingest workflow
   run-e2e.js                Cross-platform Playwright server lifecycle
   smoke-youtube.ts          Opt-in live fallback verification
-tests/                      Unit and Playwright E2E tests
+tests/
+  fixtures/                 Deterministic tracks, provider payloads, and state
+  support/                  Shared test utilities for future browser flows
+  unit/                     Pure domain, selection, persistence, and adapter tests
+  integration/              Fixture/API/session contract tests
+  e2e/smoke/                Home-to-game smoke journeys
+  e2e/modes/                Full runs for Daily, Lyrics, Genre, and Playlist
+  e2e/recovery/             Refresh, provider failure, and suggestion recovery
+  e2e/sharing/              Result-sharing journey
+  e2e/legacy/               Previous provider-dependent regression suite
+  live/                     Explicit provider smoke tests
 ```
 
 ## Known Limitations
@@ -172,8 +181,8 @@ tests/                      Unit and Playwright E2E tests
 - YouTube playlist and search support parses YouTube page data and can break if YouTube changes its response structure.
 - YouTube playback depends on video availability, embedding permissions, and browser autoplay rules.
 - Partial Lyrics Mode uses curated authentic lyric snippets.
-- Adding a new Daily track requires running the local audio-start analyzer first.
+- Adding a new Daily track requires a reviewed audio-start manifest and verified source metadata first. If Redis or `CRON_SECRET` is missing in Production, `npm run check-env` fails the deployment preflight.
 
 ## Deployment
 
-The app is compatible with Vercel. Daily, Partial Lyrics, and genre progression require no database. Configure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` only when public Spotify playlist loading is needed; no Spotify redirect URI is required.
+The app is compatible with Vercel. Provision a managed Redis integration for Preview and Production, then set `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (or the `KV_REST_API_*` compatibility names) and `CRON_SECRET`. Run the Daily cron once to prime the current UTC snapshot before opening traffic. Configure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` when public Spotify playlist loading is needed; no Spotify redirect URI is required. User progress remains localStorage; Redis stores only Daily snapshots.

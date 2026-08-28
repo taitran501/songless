@@ -1,40 +1,37 @@
-import { searchYouTubeSuggestions } from "@/lib/youtube"
-import { fetchLyricsFromLrclib } from "@/lib/lyrics-service"
 import { extractDynamicSnippets } from "@/lib/lyrics-extractor"
-import type { GameTrack, TrackGenre } from "@/lib/tracks"
+import { fetchLyricsFromLrclib } from "@/lib/lyrics-service"
+import { searchYouTubeVideo } from "@/lib/youtube"
 import type { PublicChartTrack } from "@/lib/public-charts"
+import { hasApprovedAudioStart, type GameTrack } from "@/lib/tracks"
+
+export interface LiveTrackResolveOptions {
+  excludeVideoIds?: readonly string[]
+}
+
+const APPROVED_DAILY_SOURCE_TYPES = new Set(["official_audio", "lyric_video", "music_video"])
 
 export async function resolveLiveTrackToGameTrack(
   chartTrack: PublicChartTrack,
-  challengeId?: string
+  challengeId?: string,
+  options: LiveTrackResolveOptions = {}
 ): Promise<GameTrack | null> {
   const searchQuery = `${chartTrack.artists} - ${chartTrack.name}`
 
-  // 1. Resolve YouTube Audio
-  let videoId: string | null = null
-  let albumImage = chartTrack.albumImage
-
+  let youtubeMatch: Awaited<ReturnType<typeof searchYouTubeVideo>>
   try {
-    const ytResults = await searchYouTubeSuggestions(searchQuery)
-    if (ytResults.length > 0) {
-      videoId = ytResults[0].videoId
-      if (!albumImage && ytResults[0].albumImage) {
-        albumImage = ytResults[0].albumImage
-      }
-    }
+    youtubeMatch = await searchYouTubeVideo(
+      chartTrack.name,
+      chartTrack.artists,
+      { excludeVideoIds: options.excludeVideoIds }
+    )
   } catch (err) {
-    console.warn(`[LiveResolver] YouTube search failed for "${searchQuery}":`, err)
+    console.warn(`[LiveResolver] Verified YouTube search failed for "${searchQuery}":`, err)
+    return null
   }
 
-  // Fallback to preview url if no video found
-  const uri = videoId ? `youtube:${videoId}` : `chart:${chartTrack.id}`
-
-  // 2. Resolve Official Lyrics from LRCLIB
-  let plainLyrics: string | null = null
   let snippets: string[] = []
-
   try {
-    plainLyrics = await fetchLyricsFromLrclib(chartTrack.name, chartTrack.artists)
+    const plainLyrics = await fetchLyricsFromLrclib(chartTrack.name, chartTrack.artists)
     if (plainLyrics) {
       snippets = extractDynamicSnippets(plainLyrics, {
         name: chartTrack.name,
@@ -42,23 +39,45 @@ export async function resolveLiveTrackToGameTrack(
       })
     }
   } catch (err) {
-    console.warn(`[LiveResolver] LRCLIB lyrics lookup failed for "${searchQuery}":`, err)
+    console.warn(`[LiveResolver] LRCLIB lookup failed for "${searchQuery}":`, err)
   }
 
+  const hasApprovedAnalysis = hasApprovedAudioStart(chartTrack)
+  const hasVerifiedDailySource =
+    Boolean(chartTrack.genre && chartTrack.genreEvidence) &&
+    hasApprovedAnalysis &&
+    APPROVED_DAILY_SOURCE_TYPES.has(youtubeMatch.sourceType)
+
   return {
-    source: videoId ? "youtube" : "spotify",
-    uri,
-    videoId: videoId || undefined,
+    source: "youtube",
+    uri: `youtube:${youtubeMatch.videoId}`,
+    videoId: youtubeMatch.videoId,
     name: chartTrack.name,
     artists: chartTrack.artists,
     duration_ms: 0,
-    albumImage: albumImage || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null),
+    albumImage:
+      chartTrack.albumImage || `https://i.ytimg.com/vi/${youtubeMatch.videoId}/hqdefault.jpg`,
     preview_url: chartTrack.previewUrl || null,
-    genre: chartTrack.genre,
+    ...(chartTrack.genre ? { genre: chartTrack.genre } : {}),
+    ...(chartTrack.genreEvidence ? { genreEvidence: chartTrack.genreEvidence } : {}),
+    ...(chartTrack.genreConfidence !== undefined
+      ? { genreConfidence: chartTrack.genreConfidence }
+      : {}),
     challengeId: challengeId || `live-${chartTrack.id}`,
-    dailyEligible: Boolean(videoId || chartTrack.previewUrl),
-    sourceType: "official_audio",
+    dailyEligible: hasVerifiedDailySource,
+    sourceType: youtubeMatch.sourceType,
     lyricsSnippets: snippets.length > 0 ? snippets : undefined,
-    audioStartSeconds: 0,
+    ...(chartTrack.audioStartSeconds !== undefined
+      ? { audioStartSeconds: chartTrack.audioStartSeconds }
+      : {}),
+    ...(chartTrack.audioFirstManifest !== undefined
+      ? { audioFirstManifest: chartTrack.audioFirstManifest }
+      : {}),
+    ...(chartTrack.audioAnalysisStatus
+      ? { audioAnalysisStatus: chartTrack.audioAnalysisStatus }
+      : { audioAnalysisStatus: "needs_review" as const }),
+    ...(chartTrack.audioStartConfidence !== undefined
+      ? { audioStartConfidence: chartTrack.audioStartConfidence }
+      : {}),
   }
 }

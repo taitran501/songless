@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { GameTrack } from "@/lib/tracks"
 import { isYoutubeTrack } from "@/lib/tracks"
-import {
-  getYouTubeAudioCacheKey,
-  shouldRetryCachedYouTubeSource,
-  type YouTubeAudioSourceKind,
-} from "@/lib/youtube"
+import { getYouTubeAudioCacheKey } from "@/lib/youtube"
 
 declare global {
   interface Window {
@@ -39,13 +35,15 @@ export function useAudioPlayback({
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null)
   const [playbackError, setPlaybackError] = useState<string | null>(null)
   const [isResolvingAudio, setIsResolvingAudio] = useState(false)
+  const [isRetryingAudio, setIsRetryingAudio] = useState(false)
+  const [retryAvailable, setRetryAvailable] = useState(false)
   const [loadingStep, setLoadingStep] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ytPlayerRef = useRef<any>(null)
   const youtubeResolveControllerRef = useRef<AbortController | null>(null)
-  const youtubeSourceKindRef = useRef<YouTubeAudioSourceKind>("resolved")
   const youtubeRetryCountRef = useRef(0)
+  const failedVideoIdsRef = useRef<Set<string>>(new Set())
   const youtubePlaybackFailedRef = useRef(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -153,6 +151,7 @@ export function useAudioPlayback({
       tag.onerror = () => {
         youtubePlaybackFailedRef.current = true
         setPlaybackError("Could not load the YouTube player.")
+        setRetryAvailable(youtubeRetryCountRef.current === 0)
       }
       const firstScriptTag = document.getElementsByTagName("script")[0]
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag)
@@ -168,13 +167,15 @@ export function useAudioPlayback({
       if (!window.YT?.Player) {
         youtubePlaybackFailedRef.current = true
         setPlaybackError("Could not load the YouTube player.")
+        setRetryAvailable(youtubeRetryCountRef.current === 0)
       }
     }, 10000)
 
     return () => clearTimeout(timeout)
   }, [needsYoutube, ytReady])
 
-  const resolveYouTubeFallback = useCallback((track: GameTrack, cacheKey: string) => {
+  const resolveYouTubeFallback = useCallback(
+    async (track: GameTrack, cacheKey: string, excludeVideoIds: readonly string[] = []) => {
     youtubeResolveControllerRef.current?.abort()
     const controller = new AbortController()
     youtubeResolveControllerRef.current = controller
@@ -183,61 +184,68 @@ export function useAudioPlayback({
     setIsResolvingAudio(true)
     setLoadingStep("Searching YouTube for audio source...")
 
-    void fetch(
-      `/api/youtube/search?title=${encodeURIComponent(track.name)}&artists=${encodeURIComponent(track.artists)}`,
-      { signal: controller.signal }
-    )
-      .then(async (response) => {
-        const data = await response.json()
-        if (!response.ok) {
-          throw new Error(data.error || "Could not find a YouTube fallback for this track.")
-        }
-        return data
+    const params = new URLSearchParams({ title: track.name, artists: track.artists })
+    for (const videoId of excludeVideoIds) params.append("excludeVideoId", videoId)
+
+    try {
+      const response = await fetch(`/api/youtube/search?${params.toString()}`, {
+        signal: controller.signal,
       })
-      .then((data) => {
-        if (controller.signal.aborted) return
-        if (!data.videoId) {
-          throw new Error("No playable audio source was found for this track.")
-        }
-        try {
-          localStorage.setItem(cacheKey, data.videoId)
-        } catch (error) {
-          console.warn("Could not save to localStorage cache:", error)
-        }
-        youtubeSourceKindRef.current = "resolved"
-        setLoadingStep("Loading YouTube player...")
-        setYoutubeVideoId(data.videoId)
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return
-        console.error("YouTube search failed:", error)
-        youtubePlaybackFailedRef.current = true
-        setPlaybackError("No playable audio source was found for this track.")
-        setLoadingStep(null)
-      })
-      .finally(() => {
-        if (youtubeResolveControllerRef.current === controller) {
-          youtubeResolveControllerRef.current = null
-          setIsResolvingAudio(false)
-        }
-      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Could not find a YouTube fallback for this track.")
+      }
+      if (typeof data.videoId !== "string" || !/^[a-zA-Z0-9_-]{6,32}$/.test(data.videoId)) {
+        throw new Error("No playable audio source was found for this track.")
+      }
+
+      if (excludeVideoIds.includes(data.videoId)) {
+        throw new Error("YouTube returned a source that already failed for this track.")
+      }
+
+      if (controller.signal.aborted) return false
+      try {
+        localStorage.setItem(cacheKey, data.videoId)
+      } catch (error) {
+        console.warn("Could not save to localStorage cache:", error)
+      }
+      setPlaybackError(null)
+      setRetryAvailable(false)
+      setLoadingStep("Loading YouTube player...")
+      setYoutubeVideoId(data.videoId)
+      return true
+    } catch (error) {
+      if (controller.signal.aborted) return false
+      console.error("YouTube search failed:", error)
+      youtubePlaybackFailedRef.current = true
+      setPlaybackError("No playable audio source was found for this track.")
+      setRetryAvailable(youtubeRetryCountRef.current === 0)
+      setLoadingStep(null)
+      return false
+    } finally {
+      if (youtubeResolveControllerRef.current === controller) {
+        youtubeResolveControllerRef.current = null
+        setIsResolvingAudio(false)
+      }
+    }
   }, [])
 
   useEffect(() => {
     youtubeResolveControllerRef.current?.abort()
     destroyYoutubePlayer()
     youtubeRetryCountRef.current = 0
-    youtubeSourceKindRef.current = "resolved"
+    failedVideoIdsRef.current = new Set()
     youtubePlaybackFailedRef.current = false
     setYoutubeVideoId(null)
     setPlaybackError(null)
+    setRetryAvailable(false)
+    setIsRetryingAudio(false)
     setIsResolvingAudio(false)
     setLoadingStep(null)
     resetPlayback()
 
     if (!currentTrack) return
     if (isYoutubeTrack(currentTrack)) {
-      youtubeSourceKindRef.current = "direct"
       setYoutubeVideoId(currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, ""))
       return
     }
@@ -247,13 +255,12 @@ export function useAudioPlayback({
     const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
 
     if (cachedId) {
-      youtubeSourceKindRef.current = "cached"
       setLoadingStep("Loading YouTube player...")
       setYoutubeVideoId(cachedId)
       return
     }
 
-    resolveYouTubeFallback(currentTrack, cacheKey)
+    void resolveYouTubeFallback(currentTrack, cacheKey)
 
     return () => {
       youtubeResolveControllerRef.current?.abort()
@@ -285,32 +292,15 @@ export function useAudioPlayback({
       const handleYoutubeError = () => {
         if (!isMounted) return
         youtubePlaybackFailedRef.current = true
+        if (youtubeVideoId) failedVideoIdsRef.current.add(youtubeVideoId)
         playSessionIdRef.current++
         clearPlaybackTimers()
         setIsPlaying(false)
         setIsPaused(false)
 
-        const canRetryCachedSource =
-          currentTrack &&
-          !isYoutubeTrack(currentTrack) &&
-          !currentTrack.preview_url &&
-          shouldRetryCachedYouTubeSource(
-            youtubeSourceKindRef.current,
-            youtubeRetryCountRef.current
-          )
-
-        if (canRetryCachedSource && currentTrack) {
-          youtubeRetryCountRef.current += 1
-          const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
-          localStorage.removeItem(cacheKey)
-          destroyYoutubePlayer()
-          setYoutubeVideoId(null)
-          resolveYouTubeFallback(currentTrack, cacheKey)
-          return
-        }
-
         setLoadingStep(null)
         setPlaybackError("This YouTube audio source could not be played.")
+        setRetryAvailable(youtubeRetryCountRef.current === 0)
       }
 
       const player = new window.YT.Player("youtube-player", {
@@ -390,7 +380,15 @@ export function useAudioPlayback({
     if (playbackError) return false
     const currentPlaySessionId = ++playSessionIdRef.current
     const duration = stageDurations[currentStage]
-    const audioStartSeconds = currentTrack.audioStartSeconds || 0
+    // Custom playlist tracks may not have an analysis manifest, so playback
+    // starts at zero for them. Daily tracks are validated server-side and
+    // always carry a reviewed audioStartSeconds value before reaching here.
+    const audioStartSeconds =
+      typeof currentTrack.audioStartSeconds === "number" &&
+      Number.isFinite(currentTrack.audioStartSeconds) &&
+      currentTrack.audioStartSeconds >= 0
+        ? currentTrack.audioStartSeconds
+        : 0
     clearPlaybackTimers()
 
     if (currentTrack.preview_url && audioRef.current) {
@@ -459,11 +457,52 @@ export function useAudioPlayback({
         console.warn("Could not play YouTube video:", error)
         youtubePlaybackFailedRef.current = true
         setPlaybackError("This YouTube audio source could not be played.")
+        if (youtubeVideoId) failedVideoIdsRef.current.add(youtubeVideoId)
+        setRetryAvailable(youtubeRetryCountRef.current === 0)
       }
     }
 
     return false
   }
+
+  const retryAudioSource = useCallback(async () => {
+    if (
+      !currentTrack ||
+      !needsYoutube ||
+      !retryAvailable ||
+      isRetryingAudio ||
+      youtubeRetryCountRef.current > 0
+    ) {
+      return false
+    }
+
+    youtubeRetryCountRef.current += 1
+    setIsRetryingAudio(true)
+    setRetryAvailable(false)
+    setPlaybackError(null)
+    setLoadingStep("Searching for a verified fallback...")
+    destroyYoutubePlayer()
+    setYoutubeVideoId(null)
+
+    const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
+    try {
+      localStorage.removeItem(cacheKey)
+    } catch {
+      // Cache invalidation is best effort.
+    }
+
+    const currentVideoId = currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
+    if (currentVideoId) failedVideoIdsRef.current.add(currentVideoId)
+
+    const success = await resolveYouTubeFallback(
+      currentTrack,
+      cacheKey,
+      [...failedVideoIdsRef.current]
+    )
+    setIsRetryingAudio(false)
+    if (!success) setRetryAvailable(false)
+    return success
+  }, [currentTrack, destroyYoutubePlayer, isRetryingAudio, needsYoutube, resolveYouTubeFallback, retryAvailable])
 
   const pause = async () => {
     if (!isPlaying) return
@@ -486,13 +525,16 @@ export function useAudioPlayback({
     isPlaying,
     isPaused,
     isResolvingAudio,
+    isRetryingAudio,
     isPlayerReady,
     loadingStep,
     playbackError,
+    canRetryAudio: retryAvailable && !isResolvingAudio && !isRetryingAudio,
     playSegment,
     pause,
     resume,
     pauseCurrentPlayback,
     resetPlayback,
+    retryAudioSource,
   }
 }

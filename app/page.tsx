@@ -28,7 +28,8 @@ import {
   captureProductEvent,
   getRunAnalyticsContext,
 } from "@/lib/analytics"
-import { getUtcDateKey, selectDailyTracks } from "@/lib/curated-tracks"
+import { getUtcDateKey } from "@/lib/curated-tracks"
+import { parseDailyResponse } from "@/lib/daily-response"
 import {
   EMPTY_DAILY_PROGRESS,
   getRecentDailyDays,
@@ -135,48 +136,53 @@ export default function HomePage() {
   }
 
   const [isDailyLoading, setIsDailyLoading] = useState(false)
+  const [dailyError, setDailyError] = useState<string | null>(null)
 
   const startDailyChallenge = async () => {
     const dateKey = getUtcDateKey()
     setIsDailyLoading(true)
-    let tracks: any[] = []
+    setDailyError(null)
 
     try {
       const res = await fetch(`/api/daily?date=${dateKey}`)
-      if (res.ok) {
-        const data = await res.json()
-        if (Array.isArray(data.tracks) && data.tracks.length >= 3) {
-          tracks = data.tracks
-        }
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null)
+        throw new Error(
+          typeof payload?.error === "string"
+            ? payload.error
+            : "Daily challenge is temporarily unavailable."
+        )
       }
+      const tracks = parseDailyResponse(await res.json(), dateKey)
+      const playlistId = `daily-audio-${dateKey}`
+      const session = createGameSession({
+        kind: "daily",
+        playbackMode: "audio",
+        id: playlistId,
+        dateKey,
+      })
+
+      setTracks(tracks)
+      localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
+      writeGameSession(localStorage, session)
+      captureProductEvent({
+        name: "run_started",
+        properties: {
+          ...getRunAnalyticsContext(session),
+          totalTracks: tracks.length,
+        },
+      })
+      router.push("/game")
     } catch (err) {
-      console.warn("Failed to fetch dynamic daily, using fallback:", err)
+      console.warn("Failed to fetch dynamic daily:", err)
+      setDailyError(
+        err instanceof Error
+          ? err.message
+          : "Daily challenge is temporarily unavailable. Please try again."
+      )
+    } finally {
+      setIsDailyLoading(false)
     }
-
-    if (tracks.length === 0) {
-      tracks = selectDailyTracks(dateKey)
-    }
-
-    const playlistId = `daily-audio-${dateKey}`
-    const session = createGameSession({
-      kind: "daily",
-      playbackMode: "audio",
-      id: playlistId,
-      dateKey,
-    })
-
-    setTracks(tracks)
-    localStorage.setItem("full_playlist_tracks", JSON.stringify(tracks))
-    writeGameSession(localStorage, session)
-    captureProductEvent({
-      name: "run_started",
-      properties: {
-        ...getRunAnalyticsContext(session),
-        totalTracks: tracks.length,
-      },
-    })
-    setIsDailyLoading(false)
-    router.push("/game")
   }
 
   const startLyricsMode = () => {
@@ -324,12 +330,23 @@ export default function HomePage() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Loading today's hits...
                     </>
+                  ) : dailyError ? (
+                    "Retry Today's Challenge"
                   ) : todayDailyRecord ? (
                     "Play Again"
                   ) : (
                     "Start Today's Challenge"
                   )}
                 </Button>
+                {dailyError && (
+                  <p
+                    role="alert"
+                    data-testid="daily-error"
+                    className="mt-3 max-w-md text-sm text-red-300"
+                  >
+                    {dailyError}
+                  </p>
+                )}
               </div>
             </div>
 

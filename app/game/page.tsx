@@ -35,6 +35,11 @@ import {
 } from "@/lib/daily-progress"
 import { getTrackResultId } from "@/lib/game-state"
 import {
+  clearSavedGameModal,
+  readSavedGameModal,
+  writeSavedGameModal,
+} from "@/lib/game-modal-state"
+import {
   createRunId,
   isGenreSession,
   readGameSession,
@@ -63,7 +68,6 @@ import {
   copyShareText,
   resolveShareUrl,
 } from "@/lib/sharing"
-import { CURATED_TRACKS } from "@/lib/curated-tracks"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
 function normalizeSearchText(value: string) {
@@ -81,7 +85,10 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
   const normalizedQuery = normalizeSearchText(query)
   if (normalizedQuery.length < 2) return []
 
-  const searchPool = CURATED_TRACKS
+  // Suggestions should reflect the playlist currently being played. The old
+  // implementation searched the deprecated global curated catalog, which is
+  // empty for dynamically loaded playlists and leaked unrelated answers.
+  const searchPool = tracks
 
   return searchPool
     .map((track) => {
@@ -226,6 +233,7 @@ export default function GamePage() {
     recordFailedTrack,
     resetRound,
     resetGame,
+    isStateHydrated,
     stageDurations,
     stageScores,
   } = useGameState({ tracks, tracksLoading, session })
@@ -258,6 +266,34 @@ export default function GamePage() {
     }
     setSessionLoaded(true)
   }, [])
+
+  useEffect(() => {
+    if (!session || !sessionLoaded || tracksLoading || tracks.length === 0 || !isStateHydrated) return
+
+    const savedModal = readSavedGameModal(localStorage, session)
+    if (!savedModal) return
+
+    const savedTrack = tracks[savedModal.trackIndex]
+    const savedResult = trackResults.find((result) => result.trackId === savedModal.trackId)
+    const expectedStatus = savedModal.correct ? "solved" : "failed"
+    if (
+      !savedTrack ||
+      getTrackResultId(savedTrack) !== savedModal.trackId ||
+      !savedResult ||
+      savedResult.status !== expectedStatus ||
+      savedResult.points !== savedModal.pointsEarned ||
+      savedResult.attempts.length !== savedModal.guesses.length
+    ) {
+      clearSavedGameModal(localStorage, session)
+      return
+    }
+
+    setModalContent({
+      ...savedModal,
+      track: savedTrack,
+    })
+    setShowModal(true)
+  }, [isStateHydrated, session, sessionLoaded, trackResults, tracks, tracksLoading])
 
   useEffect(() => {
     if (tracksLoading || !sessionLoaded) return
@@ -473,13 +509,15 @@ export default function GamePage() {
             },
           })
         }
-        setModalContent({
+        const nextModal = {
           correct: true,
-          track: currentTrack,
+          trackId: getTrackResultId(currentTrack),
           guesses: newGuesses,
           trackIndex: currentIndex,
           pointsEarned: stageScores[currentStage] || 0,
-        })
+        }
+        if (session) writeSavedGameModal(localStorage, session, nextModal)
+        setModalContent({ ...nextModal, track: currentTrack })
         setShowModal(true)
       } else if (currentStage < 5) {
         if (session) {
@@ -508,13 +546,15 @@ export default function GamePage() {
             },
           })
         }
-        setModalContent({
+        const nextModal = {
           correct: false,
-          track: currentTrack,
+          trackId: getTrackResultId(currentTrack),
           guesses: newGuesses,
           trackIndex: currentIndex,
           pointsEarned: 0,
-        })
+        }
+        if (session) writeSavedGameModal(localStorage, session, nextModal)
+        setModalContent({ ...nextModal, track: currentTrack })
         setShowModal(true)
       }
 
@@ -572,13 +612,15 @@ export default function GamePage() {
             },
           })
         }
-        setModalContent({
+        const nextModal = {
           correct: false,
-          track: currentTrack,
+          trackId: getTrackResultId(currentTrack),
           guesses: newGuesses,
           trackIndex: currentIndex,
           pointsEarned: 0,
-        })
+        }
+        if (session) writeSavedGameModal(localStorage, session, nextModal)
+        setModalContent({ ...nextModal, track: currentTrack })
         setShowModal(true)
       }
 
@@ -596,6 +638,7 @@ export default function GamePage() {
     setIsNextPending(true)
 
     try {
+      clearSavedGameModal(localStorage, session)
       setShowModal(false)
       await stopRoundPlayback()
       await new Promise<void>((resolve) => window.setTimeout(resolve, 220))
@@ -672,6 +715,7 @@ export default function GamePage() {
       })
     }
     playback.resetPlayback()
+    clearSavedGameModal(localStorage, session)
     clearSavedGame(session)
     router.push(navigation.exitRoute)
   }
@@ -694,12 +738,14 @@ export default function GamePage() {
 
   const handleSummaryExit = () => {
     playback.resetPlayback()
+    clearSavedGameModal(localStorage, session)
     clearSavedGame(session)
     router.push(navigation.secondaryRoute)
   }
 
   const handleReplayPlaylist = async () => {
     await stopRoundPlayback()
+    clearSavedGameModal(localStorage, session)
     if (session) {
       const genreReplay = isGenreSession(session) ? createGenreReplay(session, tracks) : null
       const lyricsReplay =
@@ -729,6 +775,7 @@ export default function GamePage() {
 
   const handleLoadAnotherPlaylist = () => {
     playback.resetPlayback()
+    clearSavedGameModal(localStorage, session)
     clearSavedGame(session)
     router.push(navigation.secondaryRoute)
   }
@@ -1050,11 +1097,37 @@ export default function GamePage() {
             isResolvingAudio={playback.isResolvingAudio}
             loadingStep={playback.loadingStep}
             playbackError={playback.playbackError}
+            canRetryAudio={playback.canRetryAudio}
+            isRetryingAudio={playback.isRetryingAudio}
             isPlaying={playback.isPlaying}
             isPaused={playback.isPaused}
             onPlay={handlePlay}
             onPause={() => void playback.pause()}
             onResume={() => void playback.resume()}
+            onRetry={async () => {
+              if (session) {
+                captureProductEvent({
+                  name: "audio_retry",
+                  properties: {
+                    ...getRunAnalyticsContext(session),
+                    trackNumber: currentIndex + 1,
+                    outcome: "requested",
+                  },
+                })
+              }
+              const retried = await playback.retryAudioSource()
+              if (session) {
+                captureProductEvent({
+                  name: "audio_retry",
+                  properties: {
+                    ...getRunAnalyticsContext(session),
+                    trackNumber: currentIndex + 1,
+                    success: retried,
+                    outcome: retried ? "succeeded" : "exhausted",
+                  },
+                })
+              }
+            }}
           />
         )}
 
@@ -1093,7 +1166,6 @@ export default function GamePage() {
           onNext={handleNextSong}
           isNextPending={isNextPending}
           onBack={() => {
-            setShowModal(false)
             requestExitRun()
           }}
           backLabel={navigation.exitLabel}

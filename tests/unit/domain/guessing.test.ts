@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import { isCorrectGuess, normalizeGuessText } from "@/lib/guessing"
 import type { GameTrack } from "@/lib/tracks"
+import { sameTitleDifferentArtist } from "@/tests/fixtures/tracks"
 
 const target: GameTrack = {
   source: "spotify",
@@ -69,10 +70,38 @@ describe("guessing", () => {
         selectedSuggestion: {
           uri: "youtube:other-video",
           name: "Em",
-          artists: "Some channel",
+          artists: "Binz",
         },
       }),
       true
+    )
+  })
+
+  it("rejects a same-title suggestion for a different artist", () => {
+    assert.equal(
+      isCorrectGuess({
+        guess: "Artist B - Home",
+        target: sameTitleDifferentArtist.target,
+        selectedUri: sameTitleDifferentArtist.suggestion.uri,
+        selectedSuggestion: sameTitleDifferentArtist.suggestion,
+      }),
+      false
+    )
+  })
+
+  it("requires an artist identity on selected suggestions", () => {
+    assert.equal(
+      isCorrectGuess({
+        guess: "Home",
+        target: sameTitleDifferentArtist.target,
+        selectedUri: "youtube:home-missing-artist",
+        selectedSuggestion: {
+          uri: "youtube:home-missing-artist",
+          name: "Home",
+          artists: "",
+        },
+      }),
+      false
     )
   })
 
@@ -96,4 +125,3 @@ describe("guessing", () => {
     assert.equal(isCorrectGuess({ guess: "nang tho", target: vnTarget }), true)
   })
 })
-

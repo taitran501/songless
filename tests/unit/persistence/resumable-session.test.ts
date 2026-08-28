@@ -4,8 +4,8 @@ import {
   GAME_SESSION_STORAGE_KEY,
   getGameStateStorageKey,
   writeGameSession,
-} from "../../lib/game-session"
-import { readResumableGameSession } from "../../lib/resumable-session"
+} from "@/lib/game-session"
+import { readResumableGameSession } from "@/lib/resumable-session"
 
 class MemoryStorage {
   private values = new Map<string, string>()

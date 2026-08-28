@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { CURATED_TRACKS } from "@/lib/curated-tracks"
-import type { GameTrack, TrackGenre } from "@/lib/tracks"
+import { hasApprovedAudioStart, type GameTrack, type TrackGenre } from "@/lib/tracks"
 
 export const GENRE_PROGRESS_STORAGE_KEY = "songless_genre_progress_v1"
 
@@ -12,6 +12,11 @@ const genreProgressRecordSchema = z.object({
 })
 
 const genreProgressStoreSchema = z.record(genreProgressRecordSchema)
+const APPROVED_GENRE_SOURCE_TYPES = new Set([
+  "official_audio",
+  "lyric_video",
+  "music_video",
+])
 
 export type GenreProgressRecord = z.infer<typeof genreProgressRecordSchema>
 
@@ -52,7 +57,9 @@ export function selectGenrePracticeTracks(
   const pool = tracks.filter(
     (track) =>
       track.genre === genre &&
-      track.dailyEligible !== false
+      (track.genreEvidence === "provider" || track.genreEvidence === "allowlist") &&
+      hasApprovedAudioStart(track) &&
+      APPROVED_GENRE_SOURCE_TYPES.has(track.sourceType || "")
   )
   if (pool.length < 5) {
     throw new Error(`Genre practice needs 5 approved ${genre} tracks, but only ${pool.length} are available.`)
