@@ -7,7 +7,7 @@ import { getYouTubeAudioCacheKey } from "@/lib/youtube"
 
 declare global {
   interface Window {
-    onYouTubeIframeAPIReady: () => void
+    onYouTubeIframeAPIReady?: () => void
     YT: any
   }
 }
@@ -38,6 +38,8 @@ export function useAudioPlayback({
   const [isRetryingAudio, setIsRetryingAudio] = useState(false)
   const [retryAvailable, setRetryAvailable] = useState(false)
   const [loadingStep, setLoadingStep] = useState<string | null>(null)
+  const [useYoutubeFallback, setUseYoutubeFallback] = useState(false)
+  const [youtubeScriptAttempt, setYoutubeScriptAttempt] = useState(0)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ytPlayerRef = useRef<any>(null)
@@ -49,7 +51,8 @@ export function useAudioPlayback({
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const playSessionIdRef = useRef(0)
 
-  const needsYoutube = !!currentTrack && !currentTrack.preview_url
+  const needsYoutube =
+    !!currentTrack && (!currentTrack.preview_url || useYoutubeFallback)
   const isPlayerReady = !playbackError && (!needsYoutube || (youtubeVideoId !== null && ytPlayer !== null))
 
   useEffect(() => {
@@ -157,8 +160,19 @@ export function useAudioPlayback({
       firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag)
     }
 
-    window.onYouTubeIframeAPIReady = () => setYtReady(true)
-  }, [needsYoutube])
+    const previousReady = window.onYouTubeIframeAPIReady
+    const readyCallback = () => {
+      previousReady?.()
+      setYtReady(true)
+    }
+    window.onYouTubeIframeAPIReady = readyCallback
+
+    return () => {
+      if (window.onYouTubeIframeAPIReady === readyCallback) {
+        window.onYouTubeIframeAPIReady = previousReady
+      }
+    }
+  }, [needsYoutube, youtubeScriptAttempt])
 
   useEffect(() => {
     if (!needsYoutube || ytReady) return
@@ -242,6 +256,7 @@ export function useAudioPlayback({
     setIsRetryingAudio(false)
     setIsResolvingAudio(false)
     setLoadingStep(null)
+    setUseYoutubeFallback(false)
     resetPlayback()
 
     if (!currentTrack) return
@@ -254,10 +269,17 @@ export function useAudioPlayback({
     const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
     const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
 
-    if (cachedId) {
+    if (cachedId && /^[a-zA-Z0-9_-]{6,32}$/.test(cachedId)) {
       setLoadingStep("Loading YouTube player...")
       setYoutubeVideoId(cachedId)
       return
+    }
+    if (cachedId) {
+      try {
+        localStorage.removeItem(cacheKey)
+      } catch {
+        // Cache invalidation is best effort.
+      }
     }
 
     void resolveYouTubeFallback(currentTrack, cacheKey)
@@ -293,6 +315,16 @@ export function useAudioPlayback({
         if (!isMounted) return
         youtubePlaybackFailedRef.current = true
         if (youtubeVideoId) failedVideoIdsRef.current.add(youtubeVideoId)
+        if (currentTrack && !isYoutubeTrack(currentTrack) && youtubeVideoId) {
+          try {
+            const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
+            if (localStorage.getItem(cacheKey) === youtubeVideoId) {
+              localStorage.removeItem(cacheKey)
+            }
+          } catch {
+            // Cache invalidation is best effort.
+          }
+        }
         playSessionIdRef.current++
         clearPlaybackTimers()
         setIsPlaying(false)
@@ -391,7 +423,7 @@ export function useAudioPlayback({
         : 0
     clearPlaybackTimers()
 
-    if (currentTrack.preview_url && audioRef.current) {
+    if (currentTrack.preview_url && !useYoutubeFallback && audioRef.current) {
       if (audioRef.current.src !== currentTrack.preview_url) {
         audioRef.current.src = currentTrack.preview_url
       }
@@ -405,6 +437,8 @@ export function useAudioPlayback({
           setIsPaused(false)
           setProgress(0)
           setPlaybackError("This audio preview could not be played.")
+          setUseYoutubeFallback(true)
+          setRetryAvailable(youtubeRetryCountRef.current === 0)
         }
         return false
       }
@@ -468,7 +502,6 @@ export function useAudioPlayback({
   const retryAudioSource = useCallback(async () => {
     if (
       !currentTrack ||
-      !needsYoutube ||
       !retryAvailable ||
       isRetryingAudio ||
       youtubeRetryCountRef.current > 0
@@ -478,11 +511,22 @@ export function useAudioPlayback({
 
     youtubeRetryCountRef.current += 1
     setIsRetryingAudio(true)
+    setUseYoutubeFallback(true)
     setRetryAvailable(false)
     setPlaybackError(null)
     setLoadingStep("Searching for a verified fallback...")
     destroyYoutubePlayer()
     setYoutubeVideoId(null)
+
+    // A failed iframe script is not recoverable by selecting another video.
+    // Remove it and let the retry start a fresh script request once.
+    if (youtubePlaybackFailedRef.current && !window.YT?.Player) {
+      document
+        .querySelector<HTMLScriptElement>("script[src='https://www.youtube.com/iframe_api']")
+        ?.remove()
+      setYtReady(false)
+      setYoutubeScriptAttempt((attempt) => attempt + 1)
+    }
 
     const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
     try {
@@ -491,8 +535,12 @@ export function useAudioPlayback({
       // Cache invalidation is best effort.
     }
 
-    const currentVideoId = currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
-    if (currentVideoId) failedVideoIdsRef.current.add(currentVideoId)
+    const currentVideoId = isYoutubeTrack(currentTrack)
+      ? currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
+      : youtubeVideoId
+    if (currentVideoId && /^[a-zA-Z0-9_-]{6,32}$/.test(currentVideoId)) {
+      failedVideoIdsRef.current.add(currentVideoId)
+    }
 
     const success = await resolveYouTubeFallback(
       currentTrack,
@@ -502,7 +550,7 @@ export function useAudioPlayback({
     setIsRetryingAudio(false)
     if (!success) setRetryAvailable(false)
     return success
-  }, [currentTrack, destroyYoutubePlayer, isRetryingAudio, needsYoutube, resolveYouTubeFallback, retryAvailable])
+  }, [currentTrack, destroyYoutubePlayer, isRetryingAudio, resolveYouTubeFallback, retryAvailable, youtubeVideoId])
 
   const pause = async () => {
     if (!isPlaying) return

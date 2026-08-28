@@ -57,6 +57,7 @@ import { isCorrectGuess } from "@/lib/guessing"
 import { getGameNavigation, hasGameProgress } from "@/lib/game-navigation"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
 import { getYouTubeAudioCacheKey } from "@/lib/youtube"
+import { fetchWithTimeout } from "@/lib/request-timeout"
 import {
   getLyricsTrackId,
   readRecentLyricsTrackIds,
@@ -332,9 +333,10 @@ export default function GamePage() {
       try {
         if (localSuggestions.length >= 6) return
 
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/youtube/suggestions?q=${encodeURIComponent(query)}`,
-          { signal: controller.signal }
+          { signal: controller.signal },
+          10_000
         )
 
         if (requestId !== suggestionsRequestIdRef.current || controller.signal.aborted) return
@@ -422,8 +424,10 @@ export default function GamePage() {
 
     const prefetchNextTrack = async () => {
       try {
-        const response = await fetch(
-          `/api/youtube/search?title=${encodeURIComponent(nextTrack.name)}&artists=${encodeURIComponent(nextTrack.artists)}`
+        const response = await fetchWithTimeout(
+          `/api/youtube/search?title=${encodeURIComponent(nextTrack.name)}&artists=${encodeURIComponent(nextTrack.artists)}`,
+          {},
+          10_000
         )
         if (response.ok) {
           const data = await response.json()

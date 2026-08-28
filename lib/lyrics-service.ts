@@ -13,9 +13,13 @@ export interface LrclibTrackResponse {
 const LRCLIB_BASE_URL = "https://lrclib.net/api"
 const LRCLIB_USER_AGENT = "SonglessUnlimited/1.0 (https://github.com/taitran501/songless)"
 const REQUEST_TIMEOUT_MS = 6000
+const NEGATIVE_CACHE_TTL_MS = 60 * 60 * 1000
 
 // In-memory runtime cache for lyrics
-const memoryLyricsCache = new Map<string, { lyrics: string | null; cachedAt: number }>()
+const memoryLyricsCache = new Map<
+  string,
+  { lyrics: string | null; cachedAt: number; ttlMs: number }
+>()
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 function getCacheKey(title: string, artist: string): string {
@@ -30,6 +34,72 @@ function cleanQueryString(value: string): string {
     .trim()
 }
 
+function normalizeMatchValue(value: string) {
+  return cleanQueryString(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function matchesProviderValue(target: string, candidate: string) {
+  const normalizedTarget = normalizeMatchValue(target)
+  const normalizedCandidate = normalizeMatchValue(candidate)
+  if (!normalizedTarget || !normalizedCandidate) return false
+  return (
+    normalizedTarget === normalizedCandidate ||
+    normalizedTarget.startsWith(`${normalizedCandidate} `) ||
+    normalizedCandidate.startsWith(`${normalizedTarget} `)
+  )
+}
+
+function matchesRequestedTrack(
+  item: LrclibTrackResponse,
+  title: string,
+  artist: string
+) {
+  const providerTitle =
+    typeof item.trackName === "string"
+      ? item.trackName
+      : typeof item.name === "string"
+        ? item.name
+        : ""
+  const providerArtist = typeof item.artistName === "string" ? item.artistName : ""
+  return (
+    matchesProviderValue(title, providerTitle) &&
+    matchesProviderValue(artist, providerArtist)
+  )
+}
+
+function hasUsableLyrics(item: LrclibTrackResponse, title: string, artist: string) {
+  if (!item || typeof item !== "object") return false
+  return (
+    matchesRequestedTrack(item, title, artist) &&
+    !item.instrumental &&
+    typeof item.plainLyrics === "string" &&
+    item.plainLyrics.trim().length > 20
+  )
+}
+
+async function fetchLrclib(url: string) {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, {
+      headers: {
+        "User-Agent": LRCLIB_USER_AGENT,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function fetchLyricsFromLrclib(
   title: string,
   artist: string,
@@ -41,9 +111,12 @@ export async function fetchLyricsFromLrclib(
 
   // 1. Check in-memory cache
   const cached = memoryLyricsCache.get(cacheKey)
-  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+  if (cached && Date.now() - cached.cachedAt < cached.ttlMs) {
     return cached.lyrics
   }
+  if (cached) memoryLyricsCache.delete(cacheKey)
+
+  let providerUnavailable = false
 
   // 2. Fetch from LRCLIB get endpoint
   try {
@@ -55,30 +128,28 @@ export async function fetchLyricsFromLrclib(
       params.set("duration", Math.round(durationSeconds).toString())
     }
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-
-    const response = await fetch(`${LRCLIB_BASE_URL}/get?${params.toString()}`, {
-      headers: {
-        "User-Agent": LRCLIB_USER_AGENT,
-        "Accept": "application/json",
-      },
-      signal: controller.signal,
-    })
-    clearTimeout(timeout)
+    const response = await fetchLrclib(`${LRCLIB_BASE_URL}/get?${params.toString()}`)
 
     if (response.ok) {
       const data: LrclibTrackResponse = await response.json()
-      if (!data.instrumental && data.plainLyrics && data.plainLyrics.trim().length > 20) {
-        const lyrics = data.plainLyrics.trim()
-        memoryLyricsCache.set(cacheKey, { lyrics, cachedAt: Date.now() })
+      if (hasUsableLyrics(data, cleanTitle, cleanArtist)) {
+        const lyrics = typeof data.plainLyrics === "string" ? data.plainLyrics.trim() : ""
+        memoryLyricsCache.set(cacheKey, {
+          lyrics,
+          cachedAt: Date.now(),
+          ttlMs: CACHE_TTL_MS,
+        })
         return lyrics
       }
-    } else if (response.status === 429) {
+    } else if (response.status === 429 || response.status >= 500) {
+      providerUnavailable = true
       const retryAfter = response.headers.get("Retry-After")
-      console.warn(`[LRCLIB] Rate limited (429). Retry-After: ${retryAfter}s`)
+      console.warn(
+        `[LRCLIB] Provider unavailable (${response.status}). Retry-After: ${retryAfter ?? "unknown"}`
+      )
     }
   } catch (error: any) {
+    providerUnavailable = true
     if (error.name !== "AbortError") {
       console.warn(`[LRCLIB] Direct lookup failed for "${cleanArtist} - ${cleanTitle}":`, error.message)
     }
@@ -86,41 +157,52 @@ export async function fetchLyricsFromLrclib(
 
   // 3. Fallback to LRCLIB search endpoint
   try {
-    const searchController = new AbortController()
-    const searchTimeout = setTimeout(() => searchController.abort(), REQUEST_TIMEOUT_MS)
-
     const searchParams = new URLSearchParams({
       q: `${cleanArtist} ${cleanTitle}`,
     })
 
-    const searchResponse = await fetch(`${LRCLIB_BASE_URL}/search?${searchParams.toString()}`, {
-      headers: {
-        "User-Agent": LRCLIB_USER_AGENT,
-        "Accept": "application/json",
-      },
-      signal: searchController.signal,
-    })
-    clearTimeout(searchTimeout)
+    const searchResponse = await fetchLrclib(
+      `${LRCLIB_BASE_URL}/search?${searchParams.toString()}`
+    )
 
     if (searchResponse.ok) {
       const results: LrclibTrackResponse[] = await searchResponse.json()
       if (Array.isArray(results) && results.length > 0) {
         for (const item of results) {
-          if (!item.instrumental && item.plainLyrics && item.plainLyrics.trim().length > 20) {
-            const lyrics = item.plainLyrics.trim()
-            memoryLyricsCache.set(cacheKey, { lyrics, cachedAt: Date.now() })
+          if (hasUsableLyrics(item, cleanTitle, cleanArtist)) {
+            const lyrics = typeof item.plainLyrics === "string" ? item.plainLyrics.trim() : ""
+            memoryLyricsCache.set(cacheKey, {
+              lyrics,
+              cachedAt: Date.now(),
+              ttlMs: CACHE_TTL_MS,
+            })
             return lyrics
           }
         }
       }
+    } else if (searchResponse.status === 429 || searchResponse.status >= 500) {
+      providerUnavailable = true
     }
   } catch (error: any) {
+    providerUnavailable = true
     if (error.name !== "AbortError") {
       console.warn(`[LRCLIB] Search fallback failed for "${cleanArtist} - ${cleanTitle}":`, error.message)
     }
   }
 
-  // Cache null result to prevent repeated hammering
-  memoryLyricsCache.set(cacheKey, { lyrics: null, cachedAt: Date.now() })
+  // Do not poison the cache for a week when LRCLIB is rate-limited or down.
+  // A short negative cache is only used when the provider responded normally
+  // but had no matching lyrics.
+  if (!providerUnavailable) {
+    memoryLyricsCache.set(cacheKey, {
+      lyrics: null,
+      cachedAt: Date.now(),
+      ttlMs: NEGATIVE_CACHE_TTL_MS,
+    })
+  }
   return null
+}
+
+export function resetLyricsCacheForTests() {
+  memoryLyricsCache.clear()
 }

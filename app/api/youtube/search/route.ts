@@ -18,13 +18,20 @@ export async function GET(request: NextRequest) {
         return value.split(",")
       }),
     ]
-    const excludeVideoIds = rawExcludedVideoIds
+    const excludeVideoIds = [...new Set(rawExcludedVideoIds
       .map((videoId) => videoId.trim())
-      .filter((videoId) => /^[a-zA-Z0-9_-]{6,32}$/.test(videoId))
+      .filter((videoId) => /^[a-zA-Z0-9_-]{6,32}$/.test(videoId)))]
+      .slice(0, 8)
 
     if (!title || !artists) {
       return NextResponse.json(
         { error: "Query parameters 'title' and 'artists' are required." },
+        { status: 400 }
+      )
+    }
+    if (title.length > 200 || artists.length > 200) {
+      return NextResponse.json(
+        { error: "Track title and artists are too long." },
         { status: 400 }
       )
     }

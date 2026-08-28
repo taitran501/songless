@@ -30,6 +30,7 @@ import {
 } from "@/lib/analytics"
 import { getUtcDateKey } from "@/lib/curated-tracks"
 import { parseDailyResponse } from "@/lib/daily-response"
+import { fetchWithTimeout } from "@/lib/request-timeout"
 import {
   EMPTY_DAILY_PROGRESS,
   getRecentDailyDays,
@@ -144,7 +145,7 @@ export default function HomePage() {
     setDailyError(null)
 
     try {
-      const res = await fetch(`/api/daily?date=${dateKey}`)
+      const res = await fetchWithTimeout(`/api/daily?date=${dateKey}`, {}, 20_000)
       if (!res.ok) {
         const payload = await res.json().catch(() => null)
         throw new Error(
