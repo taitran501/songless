@@ -59,7 +59,13 @@ const NON_RAP_USUK_MARKERS = [
 function hasMarker(genres: readonly string[], markers: readonly string[]) {
   return genres.some((genre) => {
     const normalized = normalize(genre)
-    return markers.some((marker) => normalized.includes(normalize(marker)))
+    const tokens = normalized.split(" ").filter(Boolean)
+    return markers.some((marker) => {
+      const markerTokens = normalize(marker).split(" ").filter(Boolean)
+      if (markerTokens.length === 0 || markerTokens.length > tokens.length) return false
+      return markerTokens.every((token, index) => tokens[index] === token) ||
+        tokens.some((_, index) => markerTokens.every((token, offset) => tokens[index + offset] === token))
+    })
   })
 }
 

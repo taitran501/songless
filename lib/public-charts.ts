@@ -43,6 +43,39 @@ function readProviderGenres(item: any): string[] | undefined {
   return values.length > 0 ? [...new Set(values)] : undefined
 }
 
+function toAppleChartTrack(item: unknown, region: "vn" | "us", index: number): PublicChartTrack | null {
+  if (!item || typeof item !== "object") return null
+  const value = item as {
+    id?: unknown
+    name?: unknown
+    artistName?: unknown
+    artworkUrl100?: unknown
+    genres?: unknown
+    genreNames?: unknown
+    providerGenres?: unknown
+    genre?: unknown
+    genreName?: unknown
+    primaryGenre?: unknown
+  }
+  const id = typeof value.id === "string" ? value.id.trim() : ""
+  const name = typeof value.name === "string" ? value.name.trim() : ""
+  const artists = typeof value.artistName === "string" ? value.artistName.trim() : ""
+  if (!id || !name || !artists) return null
+
+  const providerGenres = readProviderGenres(value)
+  const artworkUrl = typeof value.artworkUrl100 === "string" ? value.artworkUrl100 : ""
+  return {
+    id: `apple-${region}-${id}`,
+    name,
+    artists,
+    albumImage: artworkUrl ? artworkUrl.replace("100x100bb", "600x600bb") : null,
+    previewUrl: null,
+    region,
+    rank: index + 1,
+    ...(providerGenres ? { providerGenres } : {}),
+  }
+}
+
 export async function fetchLiveAppleMusicChart(
   region: "vn" | "us",
   legacyGenreOrLimit?: TrackGenre | number,
@@ -71,21 +104,15 @@ export async function fetchLiveAppleMusicChart(
 
     const data = await response.json()
     const results = Array.isArray(data?.feed?.results) ? data.feed.results : []
-    const tracks: PublicChartTrack[] = results.map((item: any, index: number) => {
-      const providerGenres = readProviderGenres(item)
-      return {
-        id: `apple-${region}-${item.id || index}`,
-        name: item.name || "Unknown Track",
-        artists: item.artistName || "Unknown Artist",
-        albumImage: item.artworkUrl100
-          ? item.artworkUrl100.replace("100x100bb", "600x600bb")
-          : null,
-        previewUrl: null,
-        region,
-        rank: index + 1,
-        ...(providerGenres ? { providerGenres } : {}),
-      }
-    })
+    const seen = new Set<string>()
+    const tracks: PublicChartTrack[] = results
+      .map((item: unknown, index: number) => toAppleChartTrack(item, region, index))
+      .filter((track: PublicChartTrack | null): track is PublicChartTrack => track !== null)
+      .filter((track: PublicChartTrack) => {
+        if (seen.has(track.id)) return false
+        seen.add(track.id)
+        return true
+      })
 
     if (tracks.length > 0) {
       chartsCache.set(cacheKey, { data: tracks, fetchedAt: Date.now() })

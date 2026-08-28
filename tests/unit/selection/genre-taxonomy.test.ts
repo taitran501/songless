@@ -46,4 +46,9 @@ describe("strict chart genre taxonomy", () => {
       null
     )
   })
+
+  it("matches whole genre words instead of substrings", () => {
+    assert.equal(isRapGenreMetadata(["grape"]), false)
+    assert.equal(isRapGenreMetadata(["Hip-Hop/Rap"]), true)
+  })
 })

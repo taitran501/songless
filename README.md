@@ -179,7 +179,8 @@ tests/
 ## Known Limitations
 
 - YouTube playlist and search support parses YouTube page data and can break if YouTube changes its response structure.
-- YouTube playback depends on video availability, embedding permissions, and browser autoplay rules.
+- YouTube playback depends on video availability, embedding permissions, and browser autoplay rules. A failed source is removed from the local cache and gets one strict title/artist-matched fallback; if that also fails, Skip remains available.
+- Provider requests have bounded timeouts and validate response shape. Spotify preview failures can fall back to verified YouTube, while LRCLIB only caches confirmed no-match results so an outage does not suppress lyrics for a week.
 - Partial Lyrics Mode uses curated authentic lyric snippets.
 - Adding a new Daily track requires a reviewed audio-start manifest and verified source metadata first. If Redis or `CRON_SECRET` is missing in Production, `npm run check-env` fails the deployment preflight.
 

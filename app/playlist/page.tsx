@@ -20,6 +20,7 @@ import {
 } from "@/lib/resumable-session"
 import type { GameTrack } from "@/lib/tracks"
 import { isYouTubePlaylistInput } from "@/lib/youtube"
+import { fetchWithTimeout } from "@/lib/request-timeout"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
 export default function PlaylistPage() {
@@ -77,7 +78,11 @@ export default function PlaylistPage() {
       let playlistName = `Playlist #${playlistId}`
 
       if (isYT) {
-        const response = await fetch(`/api/youtube/playlist?url=${encodeURIComponent(playlistId)}`)
+        const response = await fetchWithTimeout(
+          `/api/youtube/playlist?url=${encodeURIComponent(playlistId)}`,
+          {},
+          20_000
+        )
 
         if (!response.ok) {
           const errorData = await response.json()
@@ -90,7 +95,11 @@ export default function PlaylistPage() {
           playlistName = decodeURIComponent(nameHeader)
         }
       } else {
-        const response = await fetch(`/api/spotify/playlist?playlistId=${playlistId}`)
+        const response = await fetchWithTimeout(
+          `/api/spotify/playlist?playlistId=${encodeURIComponent(playlistId)}`,
+          {},
+          20_000
+        )
 
         if (!response.ok) {
           const errorData = await response.json()
