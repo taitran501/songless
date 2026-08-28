@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,8 +18,8 @@ import {
   discardResumableGameSession,
   readResumableGameSession,
 } from "@/lib/resumable-session"
-import type { GameTrack } from "@/lib/tracks"
-import { isYouTubePlaylistInput } from "@/lib/youtube"
+import { normalizeTracks, type GameTrack } from "@/lib/tracks"
+import { extractYouTubePlaylistId, isYouTubePlaylistInput } from "@/lib/youtube"
 import { fetchWithTimeout } from "@/lib/request-timeout"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
@@ -29,6 +29,8 @@ export default function PlaylistPage() {
   const [loadingPlaylistId, setLoadingPlaylistId] = useState<string | null>(null)
   const [loadingPlaylistName, setLoadingPlaylistName] = useState<string | null>(null)
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null)
+  const [loadedPlaylistName, setLoadedPlaylistName] = useState<string | null>(null)
+  const [loadedPlaylistSource, setLoadedPlaylistSource] = useState<"spotify" | "youtube" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [shuffleEnabled, setShuffleEnabled] = useState(false)
   const [trackCount, setTrackCount] = useState<string>("20")
@@ -38,6 +40,8 @@ export default function PlaylistPage() {
     trackCount?: number; 
     source?: "spotify" | "youtube";
   }[]>([])
+  const loadRequestIdRef = useRef(0)
+  const loadAbortControllerRef = useRef<AbortController | null>(null)
   const router = useRouter()
   const { tracks, setTracks } = useTracks()
   const modeLabel = "Guest Playlist Mode"
@@ -45,42 +49,104 @@ export default function PlaylistPage() {
   // Load recent playlists on mount and restore active playlist
   useEffect(() => {
     const saved = localStorage.getItem("recent_playlists")
+    let parsedRecent: typeof recentPlaylists = []
     if (saved) {
       try {
-        setRecentPlaylists(JSON.parse(saved))
+        const candidate = JSON.parse(saved)
+        if (Array.isArray(candidate)) {
+          parsedRecent = candidate
+            .filter((playlist): playlist is typeof recentPlaylists[number] =>
+              Boolean(playlist && typeof playlist.id === "string" && typeof playlist.name === "string")
+            )
+            .slice(0, 6)
+          setRecentPlaylists(parsedRecent)
+        }
       } catch (e) {
         console.error("Error parsing recent playlists:", e)
       }
     }
     const currentSession = readGameSession(localStorage)
     const currentId = currentSession?.kind === "playlist" ? currentSession.id : null
-    if (currentId) setActivePlaylistId(currentId)
+    if (currentId) {
+      setActivePlaylistId(currentId)
+      const currentRecent = parsedRecent.find((playlist) => playlist.id === currentId)
+      if (currentRecent) {
+        setLoadedPlaylistName(currentRecent.name)
+        setLoadedPlaylistSource(currentRecent.source ?? (isYouTubePlaylistInput(currentId) ? "youtube" : "spotify"))
+      }
+    }
+
+    return () => {
+      loadAbortControllerRef.current?.abort()
+    }
   }, [])
 
-  const extractPlaylistId = (input: string) => {
-    // Extract playlist ID from URL or return as-is if it's already an ID
-    const match = input.match(/playlist\/([a-zA-Z0-9]+)/)
-    return match ? match[1] : input
+  const clearLoadedPlaylist = () => {
+    setTracks([])
+    localStorage.removeItem("full_playlist_tracks")
+    setActivePlaylistId(null)
+    setLoadedPlaylistName(null)
+    setLoadedPlaylistSource(null)
   }
 
-  const loadPlaylistById = async (playlistId: string) => {
+  const parsePlaylistInput = (input: string) => {
+    const trimmed = input.trim()
+    if (!trimmed) return null
+
+    const isYouTube = isYouTubePlaylistInput(trimmed)
+    if (isYouTube) {
+      return extractYouTubePlaylistId(trimmed)
+        ? { provider: "youtube" as const, value: trimmed }
+        : null
+    }
+
+    try {
+      const url = new URL(trimmed)
+      if (url.hostname !== "spotify.com" && !url.hostname.endsWith(".spotify.com")) return null
+      const match = url.pathname.match(/^\/playlist\/([a-zA-Z0-9]{8,128})\/?$/)
+      return match ? { provider: "spotify" as const, value: match[1] } : null
+    } catch {
+      return /^[a-zA-Z0-9]{8,128}$/.test(trimmed)
+        ? { provider: "spotify" as const, value: trimmed }
+        : null
+    }
+  }
+
+  const loadPlaylistById = async (input: string) => {
+    const parsedInput = parsePlaylistInput(input)
+    const requestId = ++loadRequestIdRef.current
+    loadAbortControllerRef.current?.abort()
+
+    if (!parsedInput) {
+      clearLoadedPlaylist()
+      setLoading(false)
+      setLoadingPlaylistId(null)
+      setLoadingPlaylistName(null)
+      loadAbortControllerRef.current = null
+      setError("Enter a valid YouTube playlist URL/ID or public Spotify playlist URL/ID.")
+      return
+    }
+
+    const controller = new AbortController()
+    loadAbortControllerRef.current = controller
+    clearLoadedPlaylist()
     setLoading(true)
-    setLoadingPlaylistId(playlistId)
+    setLoadingPlaylistId(input)
     setError(null)
 
     // Try to use an existing name from recent playlists as a hint while loading
-    const knownName = recentPlaylists.find((p) => p.id === playlistId)?.name ?? null
+    const knownName = recentPlaylists.find((p) => p.id === input)?.name ?? null
     setLoadingPlaylistName(knownName)
     
     try {
-      const isYT = isYouTubePlaylistInput(playlistId)
+      const isYT = parsedInput.provider === "youtube"
       let data: GameTrack[] = []
-      let playlistName = `Playlist #${playlistId}`
+      let playlistName = `Playlist #${parsedInput.value}`
 
       if (isYT) {
         const response = await fetchWithTimeout(
-          `/api/youtube/playlist?url=${encodeURIComponent(playlistId)}`,
-          {},
+          `/api/youtube/playlist?url=${encodeURIComponent(parsedInput.value)}`,
+          { signal: controller.signal },
           20_000
         )
 
@@ -89,15 +155,21 @@ export default function PlaylistPage() {
           throw new Error(errorData.error || "Failed to fetch YouTube playlist")
         }
 
-        data = await response.json()
+        const payload = await response.json()
+        if (!Array.isArray(payload)) throw new Error("Playlist response was malformed.")
+        data = normalizeTracks(payload)
         const nameHeader = response.headers.get("x-playlist-name")
         if (nameHeader) {
-          playlistName = decodeURIComponent(nameHeader)
+          try {
+            playlistName = decodeURIComponent(nameHeader)
+          } catch {
+            // Keep the provider/id fallback when a header is malformed.
+          }
         }
       } else {
         const response = await fetchWithTimeout(
-          `/api/spotify/playlist?playlistId=${encodeURIComponent(playlistId)}`,
-          {},
+          `/api/spotify/playlist?playlistId=${encodeURIComponent(parsedInput.value)}`,
+          { signal: controller.signal },
           20_000
         )
 
@@ -106,10 +178,16 @@ export default function PlaylistPage() {
           throw new Error(errorData.error || "Failed to fetch playlist")
         }
 
-        data = await response.json()
+        const payload = await response.json()
+        if (!Array.isArray(payload)) throw new Error("Playlist response was malformed.")
+        data = normalizeTracks(payload)
         const nameHeader = response.headers.get("x-playlist-name")
         if (nameHeader) {
-          playlistName = decodeURIComponent(nameHeader)
+          try {
+            playlistName = decodeURIComponent(nameHeader)
+          } catch {
+            // Keep the provider/id fallback when a header is malformed.
+          }
         }
       }
 
@@ -118,31 +196,63 @@ export default function PlaylistPage() {
         return
       }
 
+      if (requestId !== loadRequestIdRef.current || controller.signal.aborted) return
+
       // Save tracks to global store
       setTracks(data)
       localStorage.setItem("full_playlist_tracks", JSON.stringify(data))
       // Save to recent playlists in localStorage
       const saved = localStorage.getItem("recent_playlists")
-      let recent = saved ? JSON.parse(saved) : []
-      recent = recent.filter((p: any) => p.id !== playlistId)
+      let recent: typeof recentPlaylists = []
+      if (saved) {
+        try {
+          const parsedRecent = JSON.parse(saved)
+          if (Array.isArray(parsedRecent)) {
+            recent = parsedRecent.filter(
+              (playlist): playlist is typeof recentPlaylists[number] =>
+                Boolean(playlist && typeof playlist.id === "string" && typeof playlist.name === "string")
+            )
+          }
+        } catch {
+          // A corrupt recent-playlist list should not invalidate a fresh load.
+        }
+      }
+      recent = recent.filter((p) => p.id !== input)
       recent.unshift({ 
-        id: playlistId, 
+        id: input,
         name: playlistName,
         trackCount: data.length,
-        source: isYouTubePlaylistInput(playlistId) ? "youtube" : "spotify"
+        source: isYT ? "youtube" : "spotify"
       })
       recent = recent.slice(0, 6) // Keep last 6
       localStorage.setItem("recent_playlists", JSON.stringify(recent))
       setRecentPlaylists(recent)
-      setActivePlaylistId(playlistId)
+      setActivePlaylistId(input)
+      setLoadedPlaylistName(playlistName)
+      setLoadedPlaylistSource(isYT ? "youtube" : "spotify")
+      setTrackCount(data.length >= 5 ? "5" : "all")
       
     } catch (error) {
+      if (controller.signal.aborted || requestId !== loadRequestIdRef.current) return
       console.error("Error fetching playlist:", error)
-      setError(error instanceof Error ? error.message : "Error fetching playlist")
+      clearLoadedPlaylist()
+      const message = error instanceof Error ? error.message : "Error fetching playlist"
+      if (/private|unavailable/i.test(message)) {
+        setError("This playlist is private or unavailable. Check the link and try again.")
+      } else if (/not found|404/i.test(message)) {
+        setError("This playlist could not be found. Check the link and try again.")
+      } else if (/network|fetch failed|failed to fetch|timed out|timeout|provider/i.test(message)) {
+        setError("Could not reach the playlist provider. Check your connection and try again.")
+      } else {
+        setError("Could not load this playlist. Check the link and try again.")
+      }
     } finally {
-      setLoading(false)
-      setLoadingPlaylistId(null)
-      setLoadingPlaylistName(null)
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false)
+        setLoadingPlaylistId(null)
+        setLoadingPlaylistName(null)
+        loadAbortControllerRef.current = null
+      }
     }
   }
 
@@ -165,8 +275,7 @@ export default function PlaylistPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!playlistInput.trim()) return
-    const playlistId = extractPlaylistId(playlistInput)
-    await loadPlaylistById(playlistId)
+    await loadPlaylistById(playlistInput)
   }
 
   return (
@@ -232,7 +341,11 @@ export default function PlaylistPage() {
               </div>
               
               {error && (
-                <div className="text-red-400 text-sm bg-red-950/20 border border-red-500/30 p-4 rounded-xl flex items-start space-x-2">
+                <div
+                  data-testid="playlist-load-error"
+                  role="alert"
+                  className="text-red-400 text-sm bg-red-950/20 border border-red-500/30 p-4 rounded-xl flex items-start space-x-2"
+                >
                   <span className="font-semibold">⚠️</span>
                   <span>{error}</span>
                 </div>
@@ -241,6 +354,7 @@ export default function PlaylistPage() {
               <div className="flex flex-col gap-3">
                 <Button
                   type="submit"
+                  data-testid="load-playlist"
                   disabled={loading || !playlistInput.trim()}
                   className="w-full bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl shadow-lg hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:scale-[1.01] active:scale-[0.99]"
                 >
@@ -386,13 +500,26 @@ export default function PlaylistPage() {
 
         {tracks.length > 0 && (
           <div className="mb-6 animate-fade-in">
-            <div className="bg-gradient-to-br from-[#10b981]/10 to-indigo-500/5 border border-[#10b981]/30 rounded-2xl p-6 shadow-2xl ring-1 ring-[#10b981]/20">
+            <div
+              data-testid="playlist-loaded"
+              className="bg-gradient-to-br from-[#10b981]/10 to-indigo-500/5 border border-[#10b981]/30 rounded-2xl p-6 shadow-2xl ring-1 ring-[#10b981]/20"
+            >
               <div className="flex items-center space-x-3 mb-4">
                 <div className="bg-[#10b981]/20 p-2 rounded-xl border border-[#10b981]/30">
                   <span className="text-[#10b981] font-bold text-sm">✓</span>
                 </div>
                 <div>
                   <h3 className="text-white font-bold text-lg font-display">PLAYLIST LOADED</h3>
+                  {loadedPlaylistName && (
+                    <p data-testid="loaded-playlist-name" className="mt-1 max-w-[32rem] truncate text-sm font-semibold text-white">
+                      {loadedPlaylistName}
+                    </p>
+                  )}
+                  {loadedPlaylistSource && (
+                    <p data-testid="loaded-playlist-source" className="text-xs uppercase tracking-wider text-[#a8b0bf]">
+                      Source: {loadedPlaylistSource === "youtube" ? "YouTube" : "Spotify"}
+                    </p>
+                  )}
                   <p className="text-[#10b981] text-sm">
                     Found {tracks.length} valid tracks in this playlist
                   </p>
@@ -465,6 +592,8 @@ export default function PlaylistPage() {
               </div>
 
               <Button 
+                data-testid="start-playlist-game"
+                disabled={tracks.length === 0 || loading}
                 onClick={() => {
                   const resumable = readResumableGameSession(localStorage)
                   if (

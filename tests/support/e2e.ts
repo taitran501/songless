@@ -76,11 +76,13 @@ export async function mockYouTubeIframe(page: Page) {
       contentType: "application/javascript",
       body: `
         (() => {
-          window.__ytEvents = { cue: [], play: 0, pause: 0, seek: [] };
+          window.__ytEvents = { cue: [], play: 0, pause: 0, seek: [], created: [], destroyed: [] };
           class MockYouTubePlayer {
             constructor(id, config) {
               this.id = id;
               this.config = config;
+              this.videoId = config.videoId;
+              window.__ytEvents.created.push(config.videoId);
               setTimeout(() => config.events?.onReady?.({ target: this }), 0);
             }
             cueVideoById(videoId) { window.__ytEvents.cue.push(videoId); }
@@ -88,6 +90,7 @@ export async function mockYouTubeIframe(page: Page) {
             playVideo() { window.__ytEvents.play += 1; this.config.events?.onStateChange?.({ target: this, data: 1 }); }
             pauseVideo() { window.__ytEvents.pause += 1; this.config.events?.onStateChange?.({ target: this, data: 2 }); }
             stopVideo() {}
+            destroy() { window.__ytEvents.destroyed.push(this.videoId); }
             unMute() {}
             setVolume() {}
           }

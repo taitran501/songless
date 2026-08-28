@@ -64,10 +64,12 @@ test("@resilience keeps a failed result checkpoint recoverable after refresh", a
     await page.getByPlaceholder(/Know the song\?/).fill(`wrong answer ${index}`)
     await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
   }
-  await expect(page.getByRole("heading", { name: /GAME OVER/i })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /TRACK FAILED/i })).toBeVisible()
+  await expect(page.getByText("Attempts Used")).toBeVisible()
+  await expect(page.getByText(/run continues with the next song/i)).toBeVisible()
 
   await page.reload()
-  await expect(page.getByRole("heading", { name: /GAME OVER/i })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /TRACK FAILED/i })).toBeVisible()
 })
 
 test("@resilience clears a modal checkpoint that does not match saved results", async ({ page }) => {

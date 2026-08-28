@@ -1,5 +1,11 @@
 import type { GameTrack } from "@/lib/tracks"
 
+export interface GuessSuggestionLike {
+  name: string
+  artists: string
+  rawTitle?: string
+}
+
 export interface GuessInput {
   guess: string
   target: GameTrack
@@ -25,6 +31,77 @@ export function normalizeGuessText(value: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
+}
+
+const NON_MUSIC_SUGGESTION_TERMS = [
+  "news",
+  "broadcast",
+  "weather",
+  "press conference",
+  "trailer",
+  "documentary",
+  "podcast",
+]
+
+export function getGuessSuggestionIdentity(suggestion: GuessSuggestionLike) {
+  const name = typeof suggestion?.name === "string" ? normalizeGuessText(suggestion.name) : ""
+  const artists = typeof suggestion?.artists === "string" ? normalizeGuessText(suggestion.artists) : ""
+  return `${name}::${artists}`
+}
+
+export function getGuessSuggestionSourcePriority(suggestion: GuessSuggestionLike) {
+  const rawTitle = typeof suggestion?.rawTitle === "string" ? suggestion.rawTitle.toLowerCase() : ""
+  if (rawTitle.includes("official audio")) return 30
+  if (rawTitle.includes("lyric video") || rawTitle.includes("lyrics")) return 20
+  if (rawTitle.includes("official music video") || rawTitle.includes("official video")) return 10
+  return 0
+}
+
+export function isRelevantGuessSuggestion(
+  query: string,
+  suggestion: GuessSuggestionLike
+) {
+  const normalizedQuery = normalizeGuessText(query)
+  if (!normalizedQuery) return false
+
+  if (
+    !suggestion ||
+    typeof suggestion.name !== "string" ||
+    typeof suggestion.artists !== "string"
+  ) {
+    return false
+  }
+
+  const title = normalizeGuessText(suggestion.name)
+  const artists = normalizeGuessText(suggestion.artists)
+  const rawTitle = normalizeGuessText(typeof suggestion.rawTitle === "string" ? suggestion.rawTitle : "")
+  const searchableText = `${title} ${artists} ${rawTitle}`.trim()
+  const queryTokens = normalizedQuery.split(" ").filter(Boolean)
+  const matchesQuery =
+    searchableText.includes(normalizedQuery) ||
+    queryTokens.every((token) => searchableText.includes(token))
+  if (!matchesQuery) return false
+
+  return !NON_MUSIC_SUGGESTION_TERMS.some((term) =>
+    searchableText.includes(normalizeGuessText(term))
+  )
+}
+
+export function dedupeGuessSuggestions<T extends GuessSuggestionLike>(suggestions: T[]) {
+  const seen = new Set<string>()
+  return suggestions.filter((suggestion) => {
+    if (
+      !suggestion ||
+      typeof suggestion.name !== "string" ||
+      typeof suggestion.artists !== "string"
+    ) {
+      return false
+    }
+    const identity = getGuessSuggestionIdentity(suggestion)
+    if (!identity || seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
 }
 
 function includesTitle(candidate: string, targetTitle: string): boolean {

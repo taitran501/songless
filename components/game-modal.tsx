@@ -120,8 +120,13 @@ export function GameModal({
           <DialogTitle className={`font-sans text-2xl sm:text-3xl font-extrabold tracking-tight ${
             correct ? "text-[#10b981] drop-shadow-[0_0_20px_rgba(16,185,129,0.7)]" : "text-[#ef4444] drop-shadow-[0_0_20px_rgba(239,68,68,0.7)]"
           }`}>
-            {correct ? "SOLVED! 🎉" : "GAME OVER ❌"}
+            {correct ? "SOLVED! 🎉" : "TRACK FAILED"}
           </DialogTitle>
+          {!correct && (
+            <p className="mt-2 text-xs text-[#fca5a5]">
+              This track is over. Your run continues with the next song.
+            </p>
+          )}
         </div>
 
         {/* Album Cover */}
@@ -144,7 +149,7 @@ export function GameModal({
         {/* Stat Summary Grid */}
         <div className="w-full grid grid-cols-2 gap-3 mb-5 select-text">
           <div className="bg-white/[0.03] rounded-lg border border-white/10 p-3 text-center">
-            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Guesses Used</p>
+            <p className="text-[10px] text-gray-400 mb-1 uppercase tracking-[0.1em] font-semibold">Attempts Used</p>
             <p className={`text-xl font-bold ${correct ? "text-[#10b981]" : "text-[#ef4444]"}`}>
               {correct ? `${guesses.length} / 6` : "6 / 6"}
             </p>

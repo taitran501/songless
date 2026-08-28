@@ -1,6 +1,13 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { isCorrectGuess, normalizeGuessText } from "@/lib/guessing"
+import {
+  dedupeGuessSuggestions,
+  getGuessSuggestionIdentity,
+  getGuessSuggestionSourcePriority,
+  isCorrectGuess,
+  isRelevantGuessSuggestion,
+  normalizeGuessText,
+} from "@/lib/guessing"
 import type { GameTrack } from "@/lib/tracks"
 import { sameTitleDifferentArtist } from "@/tests/fixtures/tracks"
 
@@ -123,5 +130,64 @@ describe("guessing", () => {
 
     assert.equal(isCorrectGuess({ guess: "Nàng Thơ", target: vnTarget }), true)
     assert.equal(isCorrectGuess({ guess: "nang tho", target: vnTarget }), true)
+  })
+
+  it("dedupes suggestions by normalized title and artist", () => {
+    const suggestions = [
+      { uri: "youtube:official", name: "Home", artists: "Artist A" },
+      { uri: "youtube:lyrics", name: "Home (Lyrics)", artists: "Artist A" },
+      { uri: "youtube:live", name: "HOME", artists: "artist a" },
+      { uri: "youtube:other", name: "Home", artists: "Artist B" },
+    ]
+
+    assert.equal(getGuessSuggestionIdentity(suggestions[0]), "home::artist a")
+    assert.deepEqual(
+      dedupeGuessSuggestions(suggestions).map((suggestion) => suggestion.uri),
+      ["youtube:official", "youtube:other"]
+    )
+  })
+
+  it("filters irrelevant and non-music YouTube suggestions", () => {
+    assert.equal(
+      isRelevantGuessSuggestion("abc", {
+        name: "ABC News",
+        artists: "World Broadcast",
+        rawTitle: "ABC News live broadcast",
+      }),
+      false
+    )
+    assert.equal(
+      isRelevantGuessSuggestion("roar", {
+        name: "Roar",
+        artists: "Katy Perry",
+        rawTitle: "Katy Perry - Roar (Official Audio)",
+      }),
+      true
+    )
+    assert.equal(
+      isRelevantGuessSuggestion("artist b home", {
+        name: "Home",
+        artists: "Artist B",
+      }),
+      true
+    )
+    assert.equal(
+      isRelevantGuessSuggestion("roar", {
+        name: "Unrelated Song",
+        artists: "Another Artist",
+      }),
+      false
+    )
+  })
+
+  it("prioritizes official audio variants when identities collide", () => {
+    assert.equal(
+      getGuessSuggestionSourcePriority({ name: "Roar", artists: "Katy Perry", rawTitle: "Katy Perry - Roar (Official Audio)" }),
+      30
+    )
+    assert.equal(
+      getGuessSuggestionSourcePriority({ name: "Roar", artists: "Katy Perry", rawTitle: "Katy Perry - Roar (Lyrics)" }),
+      20
+    )
   })
 })

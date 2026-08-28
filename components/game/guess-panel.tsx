@@ -11,6 +11,7 @@ export interface GuessSuggestion {
   name: string
   artists: string
   albumImage: string | null
+  rawTitle?: string
 }
 
 interface GuessPanelProps {
@@ -27,6 +28,7 @@ interface GuessPanelProps {
   onFocus: () => void
   onSelectSuggestion: (suggestion: GuessSuggestion) => void
   onSubmitGuess: () => void
+  onDismissSuggestions: () => void
   onSkip: () => void
   mode?: GameMode
 }
@@ -45,6 +47,7 @@ export function GuessPanel({
   onFocus,
   onSelectSuggestion,
   onSubmitGuess,
+  onDismissSuggestions,
   onSkip,
   mode = "audio",
 }: GuessPanelProps) {
@@ -163,9 +166,17 @@ export function GuessPanel({
               if (!isDisabled) onFocus()
             }}
             onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault()
+                onDismissSuggestions()
+                return
+              }
               if (event.key === "Enter") {
                 event.preventDefault()
-                if (!isDisabled) onSubmitGuess()
+                if (!isDisabled) {
+                  onDismissSuggestions()
+                  onSubmitGuess()
+                }
               }
             }}
             disabled={isDisabled}
@@ -179,6 +190,8 @@ export function GuessPanel({
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion.uri}
+                  type="button"
+                  data-testid="guess-suggestion"
                   onClick={() => {
                     if (!isDisabled) onSelectSuggestion(suggestion)
                   }}
@@ -208,13 +221,29 @@ export function GuessPanel({
           )}
         </div>
         <div className="flex gap-3">
-          <Button onClick={onSkip} disabled={isDisabled} variant="outline" className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]">
+          <Button
+            onClick={onSkip}
+            disabled={isDisabled}
+            variant="outline"
+            className="flex-1 bg-[#030712]/60 border-white/10 hover:bg-white/5 h-12 rounded-xl text-[#dce5d9]"
+          >
             <SkipForward className="w-4 h-4 mr-2" />
             {isLyricsMode
-              ? currentStage === 5 ? "GIVE UP & REVEAL ANSWER" : "REVEAL NEXT CLUE"
-              : `SKIP (+${currentStage === 5 ? "0" : ((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s)`}
+              ? currentStage === 5
+                ? "GIVE UP & REVEAL ANSWER (uses 1 attempt)"
+                : "REVEAL NEXT CLUE (uses 1 attempt)"
+              : currentStage === 5
+                ? "REVEAL ANSWER (uses 1 attempt)"
+                : `SKIP (+${((stageDurations[currentStage + 1] - stageDurations[currentStage]) / 1000).toFixed(1)}s, uses 1 attempt)`}
           </Button>
-          <Button onClick={onSubmitGuess} className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl" disabled={isDisabled || !guess.trim()}>
+          <Button
+            onClick={() => {
+              onDismissSuggestions()
+              onSubmitGuess()
+            }}
+            className="flex-1 bg-[#10b981] hover:bg-[#10b981]/90 text-black font-bold h-12 rounded-xl"
+            disabled={isDisabled || !guess.trim()}
+          >
             <Check className="w-4 h-4 mr-2" />
             SUBMIT GUESS
           </Button>
