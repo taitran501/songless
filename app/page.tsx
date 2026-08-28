@@ -85,6 +85,12 @@ export default function HomePage() {
   const todayDailyRecord =
     dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
   const recentDailyDays = getRecentDailyDays(todayDateKey, dailyProgress)
+  const todayDateLabel = new Date(`${todayDateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  })
 
   useEffect(() => {
     setGenreProgress(
@@ -368,22 +374,34 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">Today</p>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-[#7d8999]">
+                    Today · {todayDateLabel}
+                  </p>
                   <p className="mt-1 font-display text-lg font-bold text-white">
                     {todayDailyRecord ? todayDailyRecord.bestScore : "—"}
                   </p>
                 </div>
               </div>
               <div data-testid="daily-week" className="grid grid-cols-7 gap-1.5">
-                {recentDailyDays.map(({ dateKey, record }) => (
+                {recentDailyDays.map(({ dateKey, record }) => {
+                  const date = new Date(`${dateKey}T00:00:00.000Z`)
+                  const dateLabel = date.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })
+                  const dayLabel = date.toLocaleDateString("en-US", {
+                    weekday: "long",
+                    timeZone: "UTC",
+                  })
+                  return (
                   <div key={dateKey} className="text-center">
                     <span className="block text-[9px] font-semibold uppercase text-[#697386]">
-                      {new Date(`${dateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
-                        weekday: "narrow",
-                        timeZone: "UTC",
-                      })}
+                      {date.toLocaleDateString("en-US", { weekday: "narrow", timeZone: "UTC" })}
                     </span>
                     <span
+                      aria-label={`${dayLabel}, ${dateLabel}${dateKey === todayDateKey ? ", today" : ""}${record ? `, ${record.bestScore} points` : ", not completed"}`}
                       className={`mx-auto mt-1 flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-bold ${
                         record
                           ? "border-[#10b981]/50 bg-[#10b981]/20 text-[#6ee7b7]"
@@ -391,12 +409,13 @@ export default function HomePage() {
                             ? "border-white/25 bg-white/[0.05] text-white"
                             : "border-white/10 text-[#4b5563]"
                       }`}
-                      title={record ? `${record.bestScore} points` : "Not completed"}
+                      title={`${dateLabel}${dateKey === todayDateKey ? " · Today" : ""} — ${record ? `${record.bestScore} points` : "Not completed"}`}
                     >
                       {record ? "✓" : "·"}
                     </span>
                   </div>
-                ))}
+                  )
+                })}
               </div>
               <div aria-hidden="true" className="mt-4 hidden h-8 items-end justify-center gap-1.5 md:flex">
                 {EQUALIZER_HEIGHTS.map((height, index) => (

@@ -53,7 +53,13 @@ import {
   selectGenrePracticeTracks,
   type GenreProgressRecord,
 } from "@/lib/genre-progress"
-import { isCorrectGuess } from "@/lib/guessing"
+import {
+  dedupeGuessSuggestions,
+  isCorrectGuess,
+  isRelevantGuessSuggestion,
+  normalizeGuessText,
+  getGuessSuggestionSourcePriority,
+} from "@/lib/guessing"
 import { getGameNavigation, hasGameProgress } from "@/lib/game-navigation"
 import { selectLyricsSnippetIndex } from "@/lib/lyrics-clues"
 import { getYouTubeAudioCacheKey } from "@/lib/youtube"
@@ -71,19 +77,8 @@ import {
 } from "@/lib/sharing"
 import type { GameMode, GameTrack } from "@/lib/tracks"
 
-function normalizeSearchText(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/đ/g, "d")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
 function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSuggestion[] {
-  const normalizedQuery = normalizeSearchText(query)
+  const normalizedQuery = normalizeGuessText(query)
   if (normalizedQuery.length < 2) return []
 
   // Suggestions should reflect the playlist currently being played. The old
@@ -93,8 +88,8 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
 
   return searchPool
     .map((track) => {
-      const title = normalizeSearchText(track.name)
-      const artists = normalizeSearchText(track.artists)
+      const title = normalizeGuessText(track.name)
+      const artists = normalizeGuessText(track.artists)
       const combined = `${artists} ${title}`.trim()
       const titleMatch = title.includes(normalizedQuery)
       const artistMatch = artists.includes(normalizedQuery)
@@ -326,7 +321,7 @@ export default function GamePage() {
 
       const controller = new AbortController()
       suggestionsAbortControllerRef.current = controller
-      const localSuggestions = getLocalTrackSuggestions(query, tracks)
+      const localSuggestions = dedupeGuessSuggestions(getLocalTrackSuggestions(query, tracks))
       setSuggestions(localSuggestions)
       setIsSearching(true)
 
@@ -343,15 +338,19 @@ export default function GamePage() {
 
         if (response.ok) {
           const data = await response.json()
-          const seen = new Set(localSuggestions.map((suggestion) => suggestion.uri))
-          const externalSuggestions = (Array.isArray(data) ? data : [])
-            .filter((suggestion: GuessSuggestion) => {
-              if (!suggestion?.uri || seen.has(suggestion.uri)) return false
-              seen.add(suggestion.uri)
-              return true
-            })
-            .slice(0, Math.max(0, 6 - localSuggestions.length))
-          setSuggestions([...localSuggestions, ...externalSuggestions])
+          const externalSuggestions = dedupeGuessSuggestions(
+            (Array.isArray(data) ? data : [])
+              .filter((suggestion: GuessSuggestion) =>
+                Boolean(suggestion?.uri) && isRelevantGuessSuggestion(query, suggestion)
+              )
+              .sort(
+                (left: GuessSuggestion, right: GuessSuggestion) =>
+                  getGuessSuggestionSourcePriority(right) - getGuessSuggestionSourcePriority(left)
+              )
+          ).slice(0, Math.max(0, 6 - localSuggestions.length))
+          setSuggestions(
+            dedupeGuessSuggestions([...localSuggestions, ...externalSuggestions]).slice(0, 6)
+          )
         }
       } catch (error) {
         if (controller.signal.aborted || requestId !== suggestionsRequestIdRef.current) return
@@ -1048,7 +1047,7 @@ export default function GamePage() {
             zIndex: 0,
           }}
         >
-          <div id="youtube-player"></div>
+          <div id="youtube-player" key={currentTrack?.uri ?? "no-track"}></div>
         </div>
       )}
 
@@ -1097,6 +1096,7 @@ export default function GamePage() {
           />
         ) : (
           <PlaybackPanel
+            progress={playback.progress}
             isPlayerReady={playback.isPlayerReady}
             isResolvingAudio={playback.isResolvingAudio}
             loadingStep={playback.loadingStep}
@@ -1158,7 +1158,15 @@ export default function GamePage() {
             setSelectedSuggestion(suggestion)
             setShowSuggestions(false)
           }}
-          onSubmitGuess={() => void handleGuess()}
+          onSubmitGuess={() => {
+            setShowSuggestions(false)
+            cancelSearchSuggestions()
+            void handleGuess()
+          }}
+          onDismissSuggestions={() => {
+            setShowSuggestions(false)
+            cancelSearchSuggestions()
+          }}
           onSkip={() => void handleSkip()}
           mode={gameMode}
         />

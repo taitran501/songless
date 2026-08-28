@@ -4,6 +4,7 @@ import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Youtube } from "lucide-
 import { Button } from "@/components/ui/button"
 
 interface PlaybackPanelProps {
+  progress: number
   isPlayerReady: boolean
   isResolvingAudio: boolean
   loadingStep: string | null
@@ -19,6 +20,7 @@ interface PlaybackPanelProps {
 }
 
 export function PlaybackPanel({
+  progress,
   isPlayerReady,
   isResolvingAudio,
   loadingStep,
@@ -33,6 +35,14 @@ export function PlaybackPanel({
   onRetry,
 }: PlaybackPanelProps) {
   const isLoading = !isPlayerReady && !playbackError
+  const hasFinished = progress >= 100 && !isPlaying
+  const playLabel = isPlaying
+    ? "Pause playback"
+    : isPaused
+      ? "Resume clip"
+      : hasFinished
+        ? "Replay clip"
+        : "Play preview"
 
   // Determine current step label and progress (0–3 steps)
   const steps = [
@@ -47,13 +57,14 @@ export function PlaybackPanel({
     <div className="flex flex-col items-center justify-center mb-8 gap-4">
       {/* Play / Pause button */}
       <Button
+        data-testid="audio-play-button"
         disabled={!isPlayerReady}
         onClick={() => {
           if (isPlaying) { onPause(); return }
           if (isPaused) onResume()
           else onPlay()
         }}
-        aria-label={isPlaying ? "Pause playback" : "Play preview"}
+        aria-label={playLabel}
         className={`rounded-full w-24 h-24 flex justify-center items-center transition-all ${
           !isPlayerReady
             ? "bg-[#1f2937] text-[#6b7280] cursor-not-allowed"
@@ -73,9 +84,31 @@ export function PlaybackPanel({
         )}
       </Button>
 
+      <p
+        data-testid="audio-playback-status"
+        role="status"
+        aria-live="polite"
+        className="text-center text-xs uppercase tracking-wider text-[#9ca3af]"
+      >
+        {isLoading
+          ? "Preparing audio..."
+          : isPlaying
+            ? "Playing clip"
+            : isPaused
+              ? "Clip paused"
+              : hasFinished
+                ? "Clip finished · replay available"
+                : "Clip ready · press play"}
+      </p>
+
       {/* Loading progress card — only shown while loading */}
       {isLoading && !playbackError && (
-        <div className="w-full max-w-sm bg-[#090d16]/70 border border-white/8 rounded-2xl px-5 py-4 flex flex-col gap-3 shadow-xl ring-1 ring-white/5">
+        <div
+          data-testid="audio-loading-status"
+          role="status"
+          aria-live="polite"
+          className="w-full max-w-sm bg-[#090d16]/70 border border-white/8 rounded-2xl px-5 py-4 flex flex-col gap-3 shadow-xl ring-1 ring-white/5"
+        >
           {/* Header */}
           <div className="flex items-center gap-2">
             <Youtube className="w-4 h-4 text-red-400 shrink-0" />
@@ -132,7 +165,9 @@ export function PlaybackPanel({
       {(playbackError || isRetryingAudio) && (
         <div className="flex flex-col items-center gap-3">
           <p
+            data-testid="audio-error"
             role={playbackError ? "alert" : "status"}
+            aria-live={playbackError ? "assertive" : "polite"}
             className="max-w-xs text-center text-sm text-[#ef4444]"
           >
             {playbackError ?? "Searching for a verified fallback audio source..."}
@@ -143,6 +178,7 @@ export function PlaybackPanel({
               data-testid="audio-retry"
               onClick={() => void onRetry()}
               disabled={isRetryingAudio}
+              aria-busy={isRetryingAudio}
               variant="outline"
               className="h-10 rounded-xl border-[#ef4444]/40 bg-[#ef4444]/10 px-5 text-sm font-semibold text-[#fecaca] hover:bg-[#ef4444]/20"
             >

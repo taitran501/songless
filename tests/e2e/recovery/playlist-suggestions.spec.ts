@@ -89,3 +89,25 @@ test("@resilience rejects a same-title suggestion from a different artist", asyn
   await expect(page.getByRole("heading", { name: /SOLVED/i })).toHaveCount(0)
   await expect(page.getByText("2 / 6")).toBeVisible()
 })
+
+test("@resilience dedupes related suggestions and allows submit while the dropdown is open", async ({ page }) => {
+  await seedCustomGame(page)
+  await page.route("**/api/youtube/suggestions?q=*", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { uri: "youtube:home-official", name: "Home", artists: "Artist A", albumImage: null },
+        { uri: "youtube:home-lyrics", name: "Home", artists: "Artist A", albumImage: null },
+        { uri: "youtube:abc-news", name: "ABC News", artists: "World Broadcast", rawTitle: "ABC News live broadcast", albumImage: null },
+      ]),
+    })
+  })
+
+  await page.goto("/game")
+  await page.getByPlaceholder(/Know the song\?/).fill("Home")
+  await expect(page.getByTestId("guess-suggestion")).toHaveCount(1)
+
+  await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  await expect(page.getByRole("heading", { name: /SOLVED/i })).toBeVisible()
+})
