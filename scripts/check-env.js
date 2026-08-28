@@ -7,13 +7,15 @@ const requiredEnvVars = [
 ]
 const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production'
 const isVercelPreview = process.env.VERCEL_ENV === 'preview'
-const requiresDailyRedis = isProduction || isVercelPreview
 
 const redisConfigured =
   Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
   Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
 
-const deploymentEnvVars = requiresDailyRedis
+// Preview can still deploy without Redis so non-Daily flows remain reviewable.
+// The Daily API itself fails closed until a managed snapshot store is present;
+// Production remains blocked at build time when the store is not configured.
+const deploymentEnvVars = isProduction
   ? [
       ...(redisConfigured ? [] : ['UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL + KV_REST_API_TOKEN)']),
       ...(isProduction && !process.env.CRON_SECRET ? ['CRON_SECRET'] : []),
@@ -34,6 +36,10 @@ requiredEnvVars.forEach(varName => {
     console.log(`MISSING ${varName}`)
   }
 })
+
+if (isVercelPreview && !redisConfigured) {
+  console.log('WARNING Daily Redis is not configured for Preview; /api/daily will fail closed until it is provisioned.')
+}
 
 deploymentEnvVars.forEach(varName => {
   missingVars.push(varName)

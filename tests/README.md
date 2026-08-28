@@ -22,4 +22,4 @@ npm run test:e2e
 npm run test:live:unit
 ```
 
-Provider-dependent tests must be reported separately from the deterministic gate.
+Provider-dependent tests must be reported separately from the deterministic gate. The managed Redis probe is additionally opt-in: set `DAILY_REDIS_LIVE_TEST=1` together with the Redis credentials before running `npm run test:live:unit`; it writes only the reserved `2000-01-01` key with the adapter's normal TTL.
