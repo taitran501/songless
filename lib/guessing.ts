@@ -43,6 +43,27 @@ const NON_MUSIC_SUGGESTION_TERMS = [
   "podcast",
 ]
 
+const NON_CANONICAL_VARIANT_TERMS = [
+  "cover",
+  "karaoke",
+  "live",
+  "remix",
+  "nonstop",
+  "mashup",
+  "sped up",
+  "speed up",
+  "slowed",
+  "nightcore",
+  "reaction",
+]
+
+function containsNormalizedTerm(value: string, term: string) {
+  const normalizedValue = normalizeGuessText(value)
+  const normalizedTerm = normalizeGuessText(term)
+  if (!normalizedValue || !normalizedTerm) return false
+  return ` ${normalizedValue} `.includes(` ${normalizedTerm} `)
+}
+
 export function getGuessSuggestionIdentity(suggestion: GuessSuggestionLike) {
   const name = typeof suggestion?.name === "string" ? normalizeGuessText(suggestion.name) : ""
   const artists = typeof suggestion?.artists === "string" ? normalizeGuessText(suggestion.artists) : ""
@@ -82,9 +103,21 @@ export function isRelevantGuessSuggestion(
     queryTokens.every((token) => searchableText.includes(token))
   if (!matchesQuery) return false
 
-  return !NON_MUSIC_SUGGESTION_TERMS.some((term) =>
-    searchableText.includes(normalizeGuessText(term))
+  if (NON_MUSIC_SUGGESTION_TERMS.some((term) => containsNormalizedTerm(searchableText, term))) {
+    return false
+  }
+
+  const queryHasVariantQualifier = NON_CANONICAL_VARIANT_TERMS.some((term) =>
+    containsNormalizedTerm(normalizedQuery, term)
   )
+  if (
+    !queryHasVariantQualifier &&
+    NON_CANONICAL_VARIANT_TERMS.some((term) => containsNormalizedTerm(searchableText, term))
+  ) {
+    return false
+  }
+
+  return true
 }
 
 export function dedupeGuessSuggestions<T extends GuessSuggestionLike>(suggestions: T[]) {

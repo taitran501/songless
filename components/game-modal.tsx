@@ -1,6 +1,6 @@
 "use client"
 
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import { Share2, SkipForward, Music } from "lucide-react"
@@ -122,11 +122,13 @@ export function GameModal({
           }`}>
             {correct ? "SOLVED! 🎉" : "TRACK FAILED"}
           </DialogTitle>
-          {!correct && (
-            <p className="mt-2 text-xs text-[#fca5a5]">
-              This track is over. Your run continues with the next song.
-            </p>
-          )}
+          <DialogDescription
+            className={`mt-2 text-xs ${correct ? "text-[#a7f3d0]" : "text-[#fca5a5]"}`}
+          >
+            {correct
+              ? `Solved in ${guesses.length} attempt${guesses.length === 1 ? "" : "s"}. Your run continues with the next song.`
+              : "This track is over. Your run continues with the next song."}
+          </DialogDescription>
         </div>
 
         {/* Album Cover */}
