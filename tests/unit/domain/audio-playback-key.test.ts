@@ -1,6 +1,11 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { getTrackPlaybackKey } from "@/hooks/use-audio-playback"
+import {
+  createResolvedAudioSource,
+  getTrackPlaybackKey,
+  parseResolvedAudioSource,
+  serializeResolvedAudioSource,
+} from "@/hooks/use-audio-playback"
 import type { GameTrack } from "@/lib/tracks"
 
 function track(overrides: Partial<GameTrack> = {}): GameTrack {
@@ -35,5 +40,38 @@ describe("audio playback identity", () => {
 
   it("returns null when no track is active", () => {
     assert.equal(getTrackPlaybackKey(), null)
+  })
+
+  it("round-trips a verified source without losing its start metadata", () => {
+    const source = createResolvedAudioSource(
+      track({
+        audioStartSeconds: 17,
+        audioAnalysisStatus: "approved",
+        sourceType: "official_audio",
+      }),
+      "video-a"
+    )
+    const parsed = parseResolvedAudioSource(serializeResolvedAudioSource(source), track())
+
+    assert.deepEqual(parsed, source)
+    assert.equal(parsed?.audioStartVerified, true)
+  })
+
+  it("rejects legacy string caches so a fallback is resolved again", () => {
+    assert.equal(parseResolvedAudioSource("video-a", track()), null)
+  })
+
+  it("does not mark a fallback source with no approved analysis as verified", () => {
+    const parsed = parseResolvedAudioSource(
+      {
+        videoId: "fallback-a",
+        sourceType: "official_audio",
+        rawTitle: "Artist A - Track A (Official Audio)",
+      },
+      track()
+    )
+
+    assert.equal(parsed?.videoId, "fallback-a")
+    assert.equal(parsed?.audioStartVerified, false)
   })
 })

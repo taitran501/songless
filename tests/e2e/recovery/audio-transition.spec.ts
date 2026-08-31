@@ -53,11 +53,18 @@ async function mockYouTubeIframe(page: Page) {
           constructor(id, config) {
             this.config = config;
             this.videoId = config.videoId;
+            this.mount = typeof id === "string" ? document.getElementById(id) : id;
+            const iframe = document.createElement("iframe");
+            iframe.title = config.videoId + " answer leak";
+            this.mount?.appendChild(iframe);
             window.__ytEvents.created.push(config.videoId);
             setTimeout(() => config.events?.onReady?.({ target: this }), 0);
           }
           stopVideo() {}
-          destroy() { window.__ytEvents.destroyed.push(this.videoId); }
+          destroy() {
+            window.__ytEvents.destroyed.push(this.videoId);
+            setTimeout(() => this.mount?.replaceChildren(), 0);
+          }
           cueVideoById(videoId) { this.videoId = videoId; }
           unMute() {}
           setVolume() {}
@@ -73,11 +80,21 @@ async function mockYouTubeIframe(page: Page) {
 }
 
 test("@resilience replaces the YouTube player when advancing to the next track", async ({ page }) => {
+  const pageErrors: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
   await mockYouTubeIframe(page)
   await seedGame(page, transitionTracks, session)
   await page.goto("/game")
 
   await expect(page.getByTestId("audio-play-button")).toBeEnabled()
+  const hostBounds = await page.getByTestId("youtube-player-host").evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+  })
+  expect(hostBounds.width).toBeLessThanOrEqual(1)
+  expect(hostBounds.height).toBeLessThanOrEqual(1)
+  expect(hostBounds.left).toBeLessThan(0)
+  expect(hostBounds.top).toBeLessThan(0)
   await page.getByPlaceholder(/Know the song\?/).fill("Transition First")
   await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
   await expect(page.getByRole("heading", { name: /SOLVED/i })).toBeVisible()
@@ -91,6 +108,7 @@ test("@resilience replaces the YouTube player when advancing to the next track",
   await expect
     .poll(() => page.evaluate(() => (window as any).__ytEvents?.destroyed ?? []))
     .toContain("transition-first")
+  expect(pageErrors.join("\n")).not.toMatch(/removeChild|Application error/i)
 })
 
 test("@resilience exposes Skip when YouTube player initialization times out", async ({ page }) => {
