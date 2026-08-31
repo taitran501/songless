@@ -354,6 +354,13 @@ function normalizeMatchText(value: string) {
     .trim()
 }
 
+function containsMatchTerm(value: string, term: string) {
+  const normalizedValue = normalizeMatchText(value)
+  const normalizedTerm = normalizeMatchText(term)
+  if (!normalizedValue || !normalizedTerm) return false
+  return ` ${normalizedValue} `.includes(` ${normalizedTerm} `)
+}
+
 function matchTokens(value: string) {
   return normalizeMatchText(value)
     .split(" ")
@@ -392,6 +399,10 @@ const REJECTED_SOURCE_QUALIFIERS = [
   "karaoke",
   "live",
   "remix",
+  "nonstop",
+  "mashup",
+  "sped up",
+  "speed up",
   "slowed",
   "nightcore",
   "reaction",
@@ -399,23 +410,23 @@ const REJECTED_SOURCE_QUALIFIERS = [
 
 function sourcePriority(rawTitle: string) {
   const normalized = normalizeMatchText(rawTitle)
-  if (normalized.includes("official audio")) return 30
-  if (normalized.includes("lyric video") || normalized.includes("lyrics")) return 20
-  if (normalized.includes("official music video") || normalized.includes("official video")) return 10
+  if (containsMatchTerm(normalized, "official audio")) return 30
+  if (containsMatchTerm(normalized, "lyric video") || containsMatchTerm(normalized, "lyrics")) return 20
+  if (containsMatchTerm(normalized, "official music video") || containsMatchTerm(normalized, "official video")) return 10
   return 0
 }
 
 export function getYouTubeSourceType(rawTitle: string): TrackAudioSourceType {
   const normalized = normalizeMatchText(rawTitle)
-  if (normalized.includes("official audio")) return "official_audio"
-  if (normalized.includes("lyric video") || normalized.includes("lyrics")) return "lyric_video"
-  if (normalized.includes("official music video") || normalized.includes("official video")) {
+  if (containsMatchTerm(normalized, "official audio")) return "official_audio"
+  if (containsMatchTerm(normalized, "lyric video") || containsMatchTerm(normalized, "lyrics")) return "lyric_video"
+  if (containsMatchTerm(normalized, "official music video") || containsMatchTerm(normalized, "official video")) {
     return "music_video"
   }
   if (
-    normalized.includes("live") ||
-    normalized.includes("performance") ||
-    normalized.includes("concert")
+    containsMatchTerm(normalized, "live") ||
+    containsMatchTerm(normalized, "performance") ||
+    containsMatchTerm(normalized, "concert")
   ) {
     return "performance"
   }
@@ -445,8 +456,8 @@ export function resolveYouTubeAudioSourceFromSuggestions(
 
       const hasRejectedQualifier = REJECTED_SOURCE_QUALIFIERS.some(
         (qualifier) =>
-          normalizedRawTitle.includes(qualifier) &&
-          !targetTitle.includes(qualifier)
+          containsMatchTerm(normalizedRawTitle, qualifier) &&
+          !containsMatchTerm(targetTitle, qualifier)
       )
       if (hasRejectedQualifier) return null
 

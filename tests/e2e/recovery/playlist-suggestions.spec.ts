@@ -99,6 +99,7 @@ test("@resilience dedupes related suggestions and allows submit while the dropdo
       body: JSON.stringify([
         { uri: "youtube:home-official", name: "Home", artists: "Artist A", albumImage: null },
         { uri: "youtube:home-lyrics", name: "Home", artists: "Artist A", albumImage: null },
+        { uri: "youtube:home-remix", name: "Home", artists: "Artist A", rawTitle: "Artist A - Home (Nonstop Remix)", albumImage: null },
         { uri: "youtube:abc-news", name: "ABC News", artists: "World Broadcast", rawTitle: "ABC News live broadcast", albumImage: null },
       ]),
     })

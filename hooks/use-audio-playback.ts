@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import type { GameTrack } from "@/lib/tracks"
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
+import type { AudioAnalysisStatus, GameTrack, TrackAudioSourceType } from "@/lib/tracks"
 import { isYoutubeTrack } from "@/lib/tracks"
 import { getYouTubeAudioCacheKey } from "@/lib/youtube"
 
@@ -16,9 +16,131 @@ interface UseAudioPlaybackOptions {
   currentTrack?: GameTrack
   currentStage: number
   stageDurations: readonly number[]
+  youtubeContainerRef: RefObject<HTMLDivElement | null>
 }
 
 const AUDIO_LOAD_TIMEOUT_MS = 10_000
+const YOUTUBE_VIDEO_ID_PATTERN = /^[a-zA-Z0-9_-]{6,32}$/
+const AUDIO_SOURCE_TYPES: readonly TrackAudioSourceType[] = [
+  "official_audio",
+  "lyric_video",
+  "music_video",
+  "performance",
+  "unknown",
+]
+
+export interface ResolvedAudioSource {
+  videoId: string
+  sourceType: TrackAudioSourceType
+  rawTitle: string
+  matchedTitle: string
+  matchedArtists: string
+  audioStartSeconds?: number
+  audioFirstManifest?: boolean
+  audioAnalysisStatus?: AudioAnalysisStatus
+  audioStartVerified: boolean
+}
+
+function validAudioStart(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function isApprovedAudioStart(
+  audioStartSeconds: number | undefined,
+  audioAnalysisStatus: AudioAnalysisStatus | undefined,
+  audioFirstManifest: boolean | undefined
+) {
+  return (
+    audioAnalysisStatus === "approved" &&
+    audioStartSeconds !== undefined &&
+    (audioStartSeconds !== 0 || audioFirstManifest === true)
+  )
+}
+
+export function createResolvedAudioSource(track: GameTrack, videoId: string): ResolvedAudioSource {
+  const audioStartSeconds = validAudioStart(track.audioStartSeconds)
+  return {
+    videoId,
+    sourceType: track.sourceType ?? "unknown",
+    rawTitle: `${track.artists} - ${track.name}`,
+    matchedTitle: track.name,
+    matchedArtists: track.artists,
+    ...(audioStartSeconds === undefined ? {} : { audioStartSeconds }),
+    ...(track.audioFirstManifest === undefined
+      ? {}
+      : { audioFirstManifest: track.audioFirstManifest }),
+    ...(track.audioAnalysisStatus === undefined
+      ? {}
+      : { audioAnalysisStatus: track.audioAnalysisStatus }),
+    audioStartVerified: isApprovedAudioStart(
+      audioStartSeconds,
+      track.audioAnalysisStatus,
+      track.audioFirstManifest
+    ),
+  }
+}
+
+export function parseResolvedAudioSource(
+  raw: unknown,
+  fallback: Pick<GameTrack, "name" | "artists">
+): ResolvedAudioSource | null {
+  let value = raw
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw)
+    } catch {
+      // A legacy cache stores only a video ID. It must be resolved again.
+      return null
+    }
+  }
+  if (!value || typeof value !== "object") return null
+
+  const candidate = value as Record<string, unknown>
+  const videoId = typeof candidate.videoId === "string" ? candidate.videoId : ""
+  if (!YOUTUBE_VIDEO_ID_PATTERN.test(videoId)) return null
+
+  const sourceType = AUDIO_SOURCE_TYPES.includes(candidate.sourceType as TrackAudioSourceType)
+    ? (candidate.sourceType as TrackAudioSourceType)
+    : "unknown"
+  const audioStartSeconds = validAudioStart(candidate.audioStartSeconds)
+  const audioAnalysisStatus =
+    candidate.audioAnalysisStatus === "approved" ||
+    candidate.audioAnalysisStatus === "needs_review" ||
+    candidate.audioAnalysisStatus === "failed"
+      ? candidate.audioAnalysisStatus
+      : undefined
+  const audioFirstManifest =
+    typeof candidate.audioFirstManifest === "boolean" ? candidate.audioFirstManifest : undefined
+
+  return {
+    videoId,
+    sourceType,
+    rawTitle:
+      typeof candidate.rawTitle === "string" && candidate.rawTitle.trim()
+        ? candidate.rawTitle
+        : `${fallback.artists} - ${fallback.name}`,
+    matchedTitle:
+      typeof candidate.matchedTitle === "string" && candidate.matchedTitle.trim()
+        ? candidate.matchedTitle
+        : fallback.name,
+    matchedArtists:
+      typeof candidate.matchedArtists === "string" && candidate.matchedArtists.trim()
+        ? candidate.matchedArtists
+        : fallback.artists,
+    ...(audioStartSeconds === undefined ? {} : { audioStartSeconds }),
+    ...(audioFirstManifest === undefined ? {} : { audioFirstManifest }),
+    ...(audioAnalysisStatus === undefined ? {} : { audioAnalysisStatus }),
+    audioStartVerified: isApprovedAudioStart(
+      audioStartSeconds,
+      audioAnalysisStatus,
+      audioFirstManifest
+    ),
+  }
+}
+
+export function serializeResolvedAudioSource(source: ResolvedAudioSource) {
+  return JSON.stringify(source)
+}
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -34,6 +156,7 @@ export function useAudioPlayback({
   currentTrack,
   currentStage,
   stageDurations,
+  youtubeContainerRef,
 }: UseAudioPlaybackOptions) {
   const [progress, setProgress] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -49,6 +172,7 @@ export function useAudioPlayback({
   const [loadingStep, setLoadingStep] = useState<string | null>(null)
   const [useYoutubeFallback, setUseYoutubeFallback] = useState(false)
   const [youtubeScriptAttempt, setYoutubeScriptAttempt] = useState(0)
+  const [activeYoutubeSource, setActiveYoutubeSource] = useState<ResolvedAudioSource | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ytPlayerRef = useRef<any>(null)
@@ -63,6 +187,13 @@ export function useAudioPlayback({
   const playSessionIdRef = useRef(0)
   const playbackGenerationRef = useRef(0)
   const trackPlaybackKeyRef = useRef<string | null>(null)
+  const youtubeMountRef = useRef<HTMLDivElement | null>(null)
+  const activeYoutubeSourceRef = useRef<ResolvedAudioSource | null>(null)
+
+  const updateActiveYoutubeSource = useCallback((source: ResolvedAudioSource | null) => {
+    activeYoutubeSourceRef.current = source
+    setActiveYoutubeSource(source)
+  }, [])
 
   const needsYoutube =
     !!currentTrack && (!currentTrack.preview_url || useYoutubeFallback)
@@ -83,6 +214,7 @@ export function useAudioPlayback({
 
   const destroyYoutubePlayer = useCallback(() => {
     const player = ytPlayerRef.current
+    const mount = youtubeMountRef.current
     if (player) {
       try {
         player.stopVideo?.()
@@ -99,8 +231,11 @@ export function useAudioPlayback({
     ytPlayerKeyRef.current = null
     setYtPlayer(null)
     setYtPlayerKey(null)
-    document.getElementById("youtube-player")?.replaceChildren()
-  }, [])
+    youtubeMountRef.current = null
+    if (mount?.parentElement === youtubeContainerRef.current) {
+      mount.remove()
+    }
+  }, [youtubeContainerRef])
 
   const clearPlaybackTimers = useCallback(() => {
     if (timeoutRef.current) {
@@ -238,25 +373,29 @@ export function useAudioPlayback({
       if (!response.ok) {
         throw new Error(data.error || "Could not find a YouTube fallback for this track.")
       }
-      if (typeof data.videoId !== "string" || !/^[a-zA-Z0-9_-]{6,32}$/.test(data.videoId)) {
+      const resolvedSource = parseResolvedAudioSource(data, track)
+      if (!resolvedSource) {
         throw new Error("No playable audio source was found for this track.")
       }
 
-      if (excludeVideoIds.includes(data.videoId)) {
+      if (excludeVideoIds.includes(resolvedSource.videoId)) {
         throw new Error("YouTube returned a source that already failed for this track.")
       }
 
       if (controller.signal.aborted || trackPlaybackKeyRef.current !== expectedTrackKey) return false
-      try {
-        localStorage.setItem(cacheKey, data.videoId)
-      } catch (error) {
-        console.warn("Could not save to localStorage cache:", error)
+      if (track.dailyEligible !== true || resolvedSource.audioStartVerified) {
+        try {
+          localStorage.setItem(cacheKey, serializeResolvedAudioSource(resolvedSource))
+        } catch (error) {
+          console.warn("Could not save to localStorage cache:", error)
+        }
       }
+      updateActiveYoutubeSource(resolvedSource)
       setPlaybackError(null)
       setRetryAvailable(false)
       setLoadingStep("Loading YouTube player...")
-      youtubeVideoIdRef.current = data.videoId
-      setYoutubeVideoId(data.videoId)
+      youtubeVideoIdRef.current = resolvedSource.videoId
+      setYoutubeVideoId(resolvedSource.videoId)
       return true
     } catch (error) {
       if (trackPlaybackKeyRef.current !== expectedTrackKey) return false
@@ -278,7 +417,7 @@ export function useAudioPlayback({
         setIsResolvingAudio(false)
       }
     }
-  }, [])
+  }, [updateActiveYoutubeSource])
 
   useEffect(() => {
     playbackGenerationRef.current += 1
@@ -296,6 +435,7 @@ export function useAudioPlayback({
     setIsResolvingAudio(false)
     setLoadingStep(null)
     setUseYoutubeFallback(false)
+    updateActiveYoutubeSource(null)
     resetPlayback()
     youtubeVideoIdRef.current = null
 
@@ -303,6 +443,7 @@ export function useAudioPlayback({
     if (isYoutubeTrack(currentTrack)) {
       setLoadingStep("Loading YouTube player...")
       const nextVideoId = currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
+      updateActiveYoutubeSource(createResolvedAudioSource(currentTrack, nextVideoId))
       youtubeVideoIdRef.current = nextVideoId
       setYoutubeVideoId(nextVideoId)
       return
@@ -310,15 +451,17 @@ export function useAudioPlayback({
     if (currentTrack.preview_url) return
 
     const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
-    const cachedId = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
+    const cachedRaw = typeof window !== "undefined" ? localStorage.getItem(cacheKey) : null
+    const cachedSource = cachedRaw ? parseResolvedAudioSource(cachedRaw, currentTrack) : null
 
-    if (cachedId && /^[a-zA-Z0-9_-]{6,32}$/.test(cachedId)) {
+    if (cachedSource) {
       setLoadingStep("Loading YouTube player...")
-      youtubeVideoIdRef.current = cachedId
-      setYoutubeVideoId(cachedId)
+      updateActiveYoutubeSource(cachedSource)
+      youtubeVideoIdRef.current = cachedSource.videoId
+      setYoutubeVideoId(cachedSource.videoId)
       return
     }
-    if (cachedId) {
+    if (cachedRaw) {
       try {
         localStorage.removeItem(cacheKey)
       } catch {
@@ -338,6 +481,7 @@ export function useAudioPlayback({
     resetPlayback,
     resolveYouTubeFallback,
     trackPlaybackKey,
+    updateActiveYoutubeSource,
   ])
 
   useEffect(() => {
@@ -362,22 +506,29 @@ export function useAudioPlayback({
     let isMounted = true
     let playerReady = false
     let containerRetryTimeout: ReturnType<typeof setTimeout> | null = null
+    let playerMount: HTMLDivElement | null = null
 
-    const isCurrentPlayer = () =>
+    const isCurrentGeneration = () =>
       isMounted &&
       playbackGenerationRef.current === expectedGeneration &&
       trackPlaybackKeyRef.current === expectedTrackKey &&
       youtubeVideoIdRef.current === expectedVideoId &&
       youtubeVideoId === expectedVideoId
 
-    const markPlayerError = (message: string) => {
-      if (!isCurrentPlayer()) return
+    const isCurrentPlayer = () =>
+      isCurrentGeneration() &&
+      playerMount !== null &&
+      youtubeMountRef.current === playerMount
+
+    const markPlayerError = (message: string, requirePlayerMount = true) => {
+      if (requirePlayerMount ? !isCurrentPlayer() : !isCurrentGeneration()) return
       youtubePlaybackFailedRef.current = true
       failedVideoIdsRef.current.add(expectedVideoId)
       if (currentTrack && !isYoutubeTrack(currentTrack)) {
         try {
           const cacheKey = getYouTubeAudioCacheKey(currentTrack.uri)
-          if (localStorage.getItem(cacheKey) === expectedVideoId) {
+          const cachedSource = parseResolvedAudioSource(localStorage.getItem(cacheKey), currentTrack)
+          if (cachedSource?.videoId === expectedVideoId) {
             localStorage.removeItem(cacheKey)
           }
         } catch {
@@ -395,22 +546,27 @@ export function useAudioPlayback({
 
     const playerReadyTimeout = window.setTimeout(() => {
       if (!playerReady) {
-        markPlayerError("Could not load this YouTube audio in time. Try again.")
+        markPlayerError("Could not load this YouTube audio in time. Try again.", false)
       }
     }, AUDIO_LOAD_TIMEOUT_MS)
 
     const initPlayer = () => {
-      if (!isCurrentPlayer()) return
-      const container = document.getElementById("youtube-player")
-      if (!container) {
+      if (!isCurrentGeneration()) return
+      const host = youtubeContainerRef.current
+      if (!host) {
         containerRetryTimeout = setTimeout(initPlayer, 100)
         return
       }
 
+      playerMount = document.createElement("div")
+      playerMount.dataset.youtubePlayerMount = expectedTrackKey ?? "unknown"
+      host.appendChild(playerMount)
+      youtubeMountRef.current = playerMount
+
       try {
-        const player = new window.YT.Player("youtube-player", {
-          height: "200",
-          width: "200",
+        const player = new window.YT.Player(playerMount, {
+          height: "1",
+          width: "1",
           videoId: expectedVideoId,
           playerVars: {
             autoplay: 0,
@@ -423,10 +579,7 @@ export function useAudioPlayback({
           },
           events: {
             onReady: (event: any) => {
-              if (!isCurrentPlayer()) {
-                event.target?.destroy?.()
-                return
-              }
+              if (!isCurrentPlayer()) return
               playerReady = true
               clearTimeout(playerReadyTimeout)
               try {
@@ -467,6 +620,8 @@ export function useAudioPlayback({
           ytPlayerKeyRef.current = expectedTrackKey
         }
       } catch {
+        if (playerMount?.parentElement === host) playerMount.remove()
+        if (youtubeMountRef.current === playerMount) youtubeMountRef.current = null
         markPlayerError("Could not create the YouTube player. Try again.")
       }
     }
@@ -477,8 +632,20 @@ export function useAudioPlayback({
       isMounted = false
       clearTimeout(playerReadyTimeout)
       if (containerRetryTimeout) clearTimeout(containerRetryTimeout)
+      if (playerMount && youtubeMountRef.current === playerMount && !ytPlayerRef.current) {
+        playerMount.remove()
+        youtubeMountRef.current = null
+      }
     }
-  }, [clearPlaybackTimers, currentTrack, destroyYoutubePlayer, trackPlaybackKey, ytReady, youtubeVideoId])
+  }, [
+    clearPlaybackTimers,
+    currentTrack,
+    destroyYoutubePlayer,
+    trackPlaybackKey,
+    youtubeContainerRef,
+    ytReady,
+    youtubeVideoId,
+  ])
 
   useEffect(() => {
     if (ytPlayer && youtubeVideoId && ytPlayerKey === trackPlaybackKey) {
@@ -502,15 +669,11 @@ export function useAudioPlayback({
     if (playbackError) return false
     const currentPlaySessionId = ++playSessionIdRef.current
     const duration = stageDurations[currentStage]
-    // Custom playlist tracks may not have an analysis manifest, so playback
-    // starts at zero for them. Daily tracks are validated server-side and
-    // always carry a reviewed audioStartSeconds value before reaching here.
-    const audioStartSeconds =
-      typeof currentTrack.audioStartSeconds === "number" &&
-      Number.isFinite(currentTrack.audioStartSeconds) &&
-      currentTrack.audioStartSeconds >= 0
-        ? currentTrack.audioStartSeconds
-        : 0
+    // A fallback source owns its own offset. Never reuse the previous video's
+    // analysis metadata after a retry. Custom playlist sources without an
+    // approved manifest intentionally start at zero; Daily sources fail closed
+    // below instead of pretending an unverified offset is safe.
+    const audioStartSeconds = activeYoutubeSource?.audioStartSeconds ?? 0
     clearPlaybackTimers()
 
     if (currentTrack.preview_url && !useYoutubeFallback && audioRef.current) {
@@ -548,6 +711,15 @@ export function useAudioPlayback({
       typeof player.playVideo === "function" &&
       !youtubePlaybackFailedRef.current
     ) {
+      if (
+        currentTrack.dailyEligible === true &&
+        activeYoutubeSource !== null &&
+        !activeYoutubeSource.audioStartVerified
+      ) {
+        setPlaybackError("This fallback audio source has not been start-verified.")
+        setRetryAvailable(false)
+        return false
+      }
       try {
         const targetSeconds = audioStartSeconds + positionMs / 1000
         player.unMute?.()
@@ -605,7 +777,10 @@ export function useAudioPlayback({
     setRetryAvailable(false)
     setPlaybackError(null)
     setLoadingStep("Searching for a verified fallback...")
+    const failedVideoId =
+      activeYoutubeSourceRef.current?.videoId || youtubeVideoIdRef.current || null
     destroyYoutubePlayer()
+    updateActiveYoutubeSource(null)
     youtubeVideoIdRef.current = null
     setYoutubeVideoId(null)
 
@@ -626,9 +801,11 @@ export function useAudioPlayback({
       // Cache invalidation is best effort.
     }
 
-    const currentVideoId = isYoutubeTrack(currentTrack)
-      ? currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
-      : youtubeVideoId
+    const currentVideoId =
+      failedVideoId ||
+      (isYoutubeTrack(currentTrack)
+        ? currentTrack.videoId || currentTrack.uri.replace(/^youtube:/, "")
+        : null)
     if (currentVideoId && /^[a-zA-Z0-9_-]{6,32}$/.test(currentVideoId)) {
       failedVideoIdsRef.current.add(currentVideoId)
     }
@@ -641,7 +818,14 @@ export function useAudioPlayback({
     setIsRetryingAudio(false)
     if (!success) setRetryAvailable(false)
     return success
-  }, [currentTrack, destroyYoutubePlayer, isRetryingAudio, resolveYouTubeFallback, retryAvailable, youtubeVideoId])
+  }, [
+    currentTrack,
+    destroyYoutubePlayer,
+    isRetryingAudio,
+    resolveYouTubeFallback,
+    retryAvailable,
+    updateActiveYoutubeSource,
+  ])
 
   const pause = async () => {
     if (!isPlaying) return

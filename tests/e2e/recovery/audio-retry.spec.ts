@@ -27,6 +27,7 @@ const brokenPreviewTrack = {
   duration_ms: 180_000,
   albumImage: null,
   preview_url: "https://example.test/preview.mp3",
+  audioStartSeconds: 42,
 }
 
 async function seedGame(page: Page, tracks: unknown[], session: Record<string, unknown>) {
@@ -47,6 +48,7 @@ async function mockYouTubeWithFailure(page: Page, failingVideoId: string) {
       contentType: "application/javascript",
       body: `
         (() => {
+          window.__ytEvents = { seeks: [] };
           class MockPlayer {
             constructor(id, config) {
               this.config = config;
@@ -59,7 +61,7 @@ async function mockYouTubeWithFailure(page: Page, failingVideoId: string) {
               }, 0);
             }
             cueVideoById(videoId) { this.videoId = videoId; }
-            seekTo() {}
+            seekTo(seconds) { window.__ytEvents.seeks.push({ videoId: this.videoId, seconds }); }
             playVideo() {}
             pauseVideo() {}
             stopVideo() {}
@@ -190,6 +192,10 @@ test("@resilience falls back to verified YouTube when a Spotify preview expires"
 
   await expect(page.getByLabel("Play preview")).toBeVisible()
   await expect(page.getByTestId("audio-retry")).toHaveCount(0)
+  await page.getByLabel("Play preview").click()
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ytEvents?.seeks ?? []))
+    .toContainEqual({ videoId: "previewfb12", seconds: 0 })
 })
 
 test("@resilience retries a failed YouTube iframe script once", async ({ page }) => {

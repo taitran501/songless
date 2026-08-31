@@ -81,18 +81,28 @@ export default function HomePage() {
   const [confirmIntent, setConfirmIntent] = useState<"discard" | "start" | null>(null)
   const pendingStartRef = useRef<(() => void) | null>(null)
   const homeViewedRef = useRef(false)
-  const todayDateKey = getUtcDateKey()
+  // The Home route is statically prerendered even though it is a client
+  // component. Keep the first render identical on the server and client, then
+  // derive the UTC calendar once the browser has mounted.
+  const [todayDateKey, setTodayDateKey] = useState<string | null>(null)
   const todayDailyRecord =
-    dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
-  const recentDailyDays = getRecentDailyDays(todayDateKey, dailyProgress)
-  const todayDateLabel = new Date(`${todayDateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  })
+    todayDateKey
+      ? dailyProgress.history.find((record) => record.dateKey === todayDateKey) ?? null
+      : null
+  const recentDailyDays = todayDateKey
+    ? getRecentDailyDays(todayDateKey, dailyProgress)
+    : []
+  const todayDateLabel = todayDateKey
+    ? new Date(`${todayDateKey}T00:00:00.000Z`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "—"
 
   useEffect(() => {
+    setTodayDateKey(getUtcDateKey())
     setGenreProgress(
       Object.fromEntries(
         GENRES.map((genre) => [genre, readGenreProgress(localStorage, genre)])
@@ -329,7 +339,7 @@ export default function HomePage() {
                 </p>
                 <Button
                   onClick={() => requestNewRun(startDailyChallenge)}
-                  disabled={isDailyLoading}
+                  disabled={isDailyLoading || !todayDateKey}
                   className="mt-5 h-11 w-full rounded-xl bg-[#10b981] px-6 font-bold text-black shadow-lg transition-all hover:bg-[#34d399] hover:shadow-[0_0_24px_rgba(16,185,129,0.28)] sm:w-auto"
                 >
                   {isDailyLoading ? (
@@ -383,7 +393,7 @@ export default function HomePage() {
                 </div>
               </div>
               <div data-testid="daily-week" className="grid grid-cols-7 gap-1.5">
-                {recentDailyDays.map(({ dateKey, record }) => {
+                {todayDateKey ? recentDailyDays.map(({ dateKey, record }) => {
                   const date = new Date(`${dateKey}T00:00:00.000Z`)
                   const dateLabel = date.toLocaleDateString("en-US", {
                     month: "short",
@@ -415,7 +425,15 @@ export default function HomePage() {
                     </span>
                   </div>
                   )
-                })}
+                }) : (
+                  <span
+                    className="col-span-7 py-2 text-center text-[10px] uppercase tracking-wider text-[#697386]"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    Loading calendar...
+                  </span>
+                )}
               </div>
               <div aria-hidden="true" className="mt-4 hidden h-8 items-end justify-center gap-1.5 md:flex">
                 {EQUALIZER_HEIGHTS.map((height, index) => (

@@ -178,6 +178,30 @@ describe("guessing", () => {
       }),
       false
     )
+    assert.equal(
+      isRelevantGuessSuggestion("home", {
+        name: "Home",
+        artists: "Artist A",
+        rawTitle: "Artist A - Home (Official Audio)",
+      }),
+      true
+    )
+    assert.equal(
+      isRelevantGuessSuggestion("home", {
+        name: "Home",
+        artists: "Artist A",
+        rawTitle: "Artist A - Home (Nonstop Remix)",
+      }),
+      false
+    )
+    assert.equal(
+      isRelevantGuessSuggestion("home remix", {
+        name: "Home Remix",
+        artists: "Artist A",
+        rawTitle: "Artist A - Home Remix",
+      }),
+      true
+    )
   })
 
   it("prioritizes official audio variants when identities collide", () => {

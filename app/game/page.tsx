@@ -20,7 +20,11 @@ import { LyricsCluePanel } from "@/components/game/lyrics-clue-panel"
 import { PlaybackPanel } from "@/components/game/playback-panel"
 import { ProgressPanel } from "@/components/game/progress-panel"
 import { clearSavedGame, useGameState } from "@/hooks/use-game-state"
-import { useAudioPlayback } from "@/hooks/use-audio-playback"
+import {
+  parseResolvedAudioSource,
+  serializeResolvedAudioSource,
+  useAudioPlayback,
+} from "@/hooks/use-audio-playback"
 import { useTracks } from "@/hooks/tracks-store"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -97,6 +101,14 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
 
       if (!titleMatch && !artistMatch && !combinedMatch) return null
 
+      const suggestion = {
+        uri: track.uri,
+        name: track.name,
+        artists: track.artists,
+        albumImage: track.albumImage,
+      }
+      if (!isRelevantGuessSuggestion(query, suggestion)) return null
+
       const score =
         title === normalizedQuery
           ? 0
@@ -110,12 +122,7 @@ function getLocalTrackSuggestions(query: string, tracks: GameTrack[]): GuessSugg
 
       return {
         score,
-        suggestion: {
-          uri: track.uri,
-          name: track.name,
-          artists: track.artists,
-          albumImage: track.albumImage,
-        },
+        suggestion,
       }
     })
     .filter((item): item is { score: number; suggestion: GuessSuggestion } => item !== null)
@@ -201,6 +208,7 @@ export default function GamePage() {
   const [dailyProgress, setDailyProgress] =
     useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const youtubeContainerRef = useRef<HTMLDivElement>(null)
   const roundActionLockRef = useRef(false)
   const nextActionLockRef = useRef(false)
   const finalizeRunRef = useRef(false)
@@ -248,6 +256,7 @@ export default function GamePage() {
     currentTrack: isLyricsMode ? undefined : currentTrack,
     currentStage,
     stageDurations,
+    youtubeContainerRef,
   })
 
   useEffect(() => {
@@ -417,9 +426,17 @@ export default function GamePage() {
     if (nextTrack.source === "youtube") return
 
     const cacheKey = getYouTubeAudioCacheKey(nextTrack.uri)
-    const cachedId = localStorage.getItem(cacheKey)
+    const cachedRaw = localStorage.getItem(cacheKey)
+    const cachedSource = cachedRaw ? parseResolvedAudioSource(cachedRaw, nextTrack) : null
 
-    if (cachedId) return // Already cached
+    if (cachedSource) return // Already cached with a full, parseable source
+    if (cachedRaw) {
+      try {
+        localStorage.removeItem(cacheKey)
+      } catch {
+        // Cache invalidation is best effort.
+      }
+    }
 
     const prefetchNextTrack = async () => {
       try {
@@ -430,8 +447,9 @@ export default function GamePage() {
         )
         if (response.ok) {
           const data = await response.json()
-          if (data.videoId) {
-            localStorage.setItem(cacheKey, data.videoId)
+          const resolvedSource = parseResolvedAudioSource(data, nextTrack)
+          if (resolvedSource && (nextTrack.dailyEligible !== true || resolvedSource.audioStartVerified)) {
+            localStorage.setItem(cacheKey, serializeResolvedAudioSource(resolvedSource))
           }
         }
       } catch (err) {
@@ -1035,20 +1053,24 @@ export default function GamePage() {
     >
       {!isLyricsMode && (
         <div
+          ref={youtubeContainerRef}
+          data-testid="youtube-player-host"
           aria-hidden="true"
+          tabIndex={-1}
           style={{
             position: "fixed",
-            left: 0,
-            bottom: 0,
-            width: "200px",
-            height: "200px",
-            opacity: 0.01,
+            left: "-10000px",
+            top: "-10000px",
+            width: "1px",
+            height: "1px",
+            overflow: "hidden",
+            clipPath: "inset(50%)",
+            opacity: 0,
             pointerEvents: "none",
             zIndex: 0,
+            contain: "strict",
           }}
-        >
-          <div id="youtube-player" key={currentTrack?.uri ?? "no-track"}></div>
-        </div>
+        />
       )}
 
       <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-500/10 blur-[130px] pointer-events-none" />
