@@ -29,7 +29,7 @@ import { fetchWithTimeout } from "@/lib/request-timeout"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
 
 class PlaylistLoadError extends Error {
-  constructor(message: string, public code?: string) {
+  constructor(message: string) {
     super(message)
     this.name = "PlaylistLoadError"
   }
@@ -42,10 +42,7 @@ async function readPlaylistLoadError(response: Response, fallback: string) {
       const message = typeof (payload as { error?: unknown }).error === "string"
         ? (payload as { error: string }).error
         : fallback
-      const code = typeof (payload as { code?: unknown }).code === "string"
-        ? (payload as { code: string }).code
-        : undefined
-      return new PlaylistLoadError(message, code)
+      return new PlaylistLoadError(message)
     }
   } catch {
     // The generic message below is safer than exposing a provider HTML error.
@@ -142,7 +139,8 @@ export default function PlaylistPage() {
     setError(null)
 
     // Try to use an existing name from recent playlists as a hint while loading
-    const knownName = recentPlaylists.find((p) => p.id === input)?.name ?? null
+    const lookupId = extractYouTubePlaylistId(input) || input.trim()
+    const knownName = recentPlaylists.find((p) => p.id === lookupId)?.name ?? null
     setLoadingPlaylistName(knownName)
     
     try {

@@ -10,6 +10,8 @@ import {
 } from "@/lib/tracks"
 
 const dailyTrackContractSchema = z.object({
+  // Keep the legacy enum for snapshot/session compatibility; validation below
+  // rejects non-YouTube tracks from newly served Daily responses.
   source: z.enum(["spotify", "youtube"]),
   uri: z.string().min(1),
   videoId: z.string().min(1).optional(),
