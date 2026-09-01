@@ -12,8 +12,8 @@ import type { GameTrack } from "@/lib/tracks"
 import { sameTitleDifferentArtist } from "@/tests/fixtures/tracks"
 
 const target: GameTrack = {
-  source: "spotify",
-  uri: "spotify:track:test",
+  source: "youtube",
+  uri: "youtube:track-test",
   name: "The Song (feat. Guest) - Remastered",
   artists: "Artist",
   duration_ms: 180000,

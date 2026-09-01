@@ -1,5 +1,6 @@
 export type FixtureGenre = "usuk" | "vpop" | "rap"
 export type FixtureTrack = {
+  /** Legacy Spotify is retained only for explicit migration/preview tests. */
   source: "spotify" | "youtube"
   uri: string
   name: string
@@ -23,7 +24,8 @@ export type FixtureTrack = {
 export function createTrack(
   overrides: Partial<FixtureTrack> & Pick<FixtureTrack, "uri" | "name" | "artists">
 ): FixtureTrack {
-  const source = overrides.source ?? (overrides.uri.startsWith("youtube:") ? "youtube" : "spotify")
+  const source = overrides.source ?? "youtube"
+  const videoId = overrides.videoId ?? overrides.uri.replace(/^youtube:/, "")
   return {
     source,
     uri: overrides.uri,
@@ -31,9 +33,9 @@ export function createTrack(
     artists: overrides.artists,
     duration_ms: overrides.duration_ms ?? 180_000,
     albumImage: overrides.albumImage ?? null,
-    preview_url: overrides.preview_url ?? (source === "spotify" ? "https://example.test/preview.mp3" : null),
+    preview_url: overrides.preview_url ?? null,
     ...(source === "youtube"
-      ? { videoId: overrides.videoId ?? overrides.uri.replace(/^youtube:/, "") }
+      ? { videoId }
       : {}),
     ...(overrides.genre ? { genre: overrides.genre } : {}),
     ...(overrides.genreEvidence ? { genreEvidence: overrides.genreEvidence } : {}),
@@ -113,8 +115,8 @@ const genreTrackNames: Record<FixtureGenre, string> = {
 export const genreTracks: Record<FixtureGenre, FixtureTrack[]> = {
   vpop: Array.from({ length: 5 }, (_, index) =>
     createTrack({
-      source: "spotify",
-      uri: `spotify:genre-vpop-${index + 1}`,
+      source: "youtube",
+      uri: `youtube:genre-vpop-${index + 1}`,
       name: `${genreTrackNames.vpop} ${index + 1}`,
       artists: `VPop Artist ${index + 1}`,
       genre: "vpop",
@@ -127,8 +129,8 @@ export const genreTracks: Record<FixtureGenre, FixtureTrack[]> = {
   ),
   usuk: Array.from({ length: 5 }, (_, index) =>
     createTrack({
-      source: "spotify",
-      uri: `spotify:genre-usuk-${index + 1}`,
+      source: "youtube",
+      uri: `youtube:genre-usuk-${index + 1}`,
       name: `${genreTrackNames.usuk} ${index + 1}`,
       artists: `USUK Artist ${index + 1}`,
       genre: "usuk",
@@ -141,8 +143,8 @@ export const genreTracks: Record<FixtureGenre, FixtureTrack[]> = {
   ),
   rap: Array.from({ length: 5 }, (_, index) =>
     createTrack({
-      source: "spotify",
-      uri: `spotify:genre-rap-${index + 1}`,
+      source: "youtube",
+      uri: `youtube:genre-rap-${index + 1}`,
       name: `${genreTrackNames.rap} ${index + 1}`,
       artists: `Rap Artist ${index + 1}`,
       genre: "rap",
@@ -199,8 +201,8 @@ export const lyricsTracks: FixtureTrack[] = [
 
 export const playlistTracks: FixtureTrack[] = [
   createTrack({
-    source: "spotify",
-    uri: "spotify:playlist-one",
+    source: "youtube",
+    uri: "youtube:playlist-one",
     name: "Playlist One",
     artists: "Playlist Artist",
   }),

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 type TestTrack = {
+  /** Spotify is kept only in explicit legacy compatibility fixtures. */
   source: "spotify" | "youtube"
   uri: string
   videoId?: string
@@ -17,7 +18,7 @@ type TestTrack = {
 }
 
 function track(overrides: Partial<TestTrack> & Pick<TestTrack, "uri" | "name" | "artists">): TestTrack {
-  const source = overrides.source ?? (overrides.uri.startsWith("youtube:") ? "youtube" : "spotify")
+  const source = overrides.source ?? "youtube"
   return {
     source,
     uri: overrides.uri,
@@ -25,7 +26,7 @@ function track(overrides: Partial<TestTrack> & Pick<TestTrack, "uri" | "name" | 
     artists: overrides.artists,
     duration_ms: overrides.duration_ms ?? 180_000,
     albumImage: null,
-    preview_url: overrides.preview_url ?? (source === "spotify" ? "https://example.test/preview.mp3" : null),
+    preview_url: overrides.preview_url ?? null,
     ...(source === "youtube" ? { videoId: overrides.videoId ?? overrides.uri.slice("youtube:".length) } : {}),
     ...(overrides.genre ? { genre: overrides.genre } : {}),
     ...(overrides.challengeId ? { challengeId: overrides.challengeId } : {}),
@@ -51,8 +52,8 @@ const lyricsTracks = [
 
 const genreTracks = Array.from({ length: 5 }, (_, index) =>
   track({
-    source: "spotify",
-    uri: `spotify:genre-vpop-${index + 1}`,
+    source: "youtube",
+    uri: `youtube:genre-vpop-${index + 1}`,
     name: `Genre VPop ${index + 1}`,
     artists: `VPop Artist ${index + 1}`,
     genre: "vpop",
@@ -60,7 +61,7 @@ const genreTracks = Array.from({ length: 5 }, (_, index) =>
 )
 
 const playlistTracks = [
-  track({ source: "spotify", uri: "spotify:playlist-one", name: "Playlist One", artists: "Playlist Artist" }),
+  track({ source: "youtube", uri: "youtube:playlist-one", name: "Playlist One", artists: "Playlist Artist" }),
   track({ source: "youtube", uri: "youtube:playlist-two", name: "Playlist Two", artists: "Playlist Artist" }),
 ]
 
@@ -118,7 +119,7 @@ test("@smoke @genre completes a five-track genre run", async ({ page }) => {
 
 test("@smoke @playlist completes a mixed playlist run", async ({ page }) => {
   await mockYouTubeIframe(page)
-  await seedGame(page, playlistTracks, { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "spotify" })
+  await seedGame(page, playlistTracks, { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "youtube" })
   await page.goto("/game")
   await expect(page.getByText("Mode: Audio Playlist Mode")).toBeVisible()
   await completeRun(page, playlistTracks.map((item) => item.name))

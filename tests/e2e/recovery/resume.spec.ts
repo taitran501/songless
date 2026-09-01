@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 const playlistTracks = [
-  { source: "spotify", uri: "spotify:playlist-one", name: "Playlist One", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: "https://example.test/preview.mp3" },
+  { source: "youtube", uri: "youtube:playlist-one", videoId: "playlist-one", name: "Playlist One", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: null },
   { source: "youtube", uri: "youtube:playlist-two", videoId: "playlist-two", name: "Playlist Two", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: null },
 ]
 
@@ -19,7 +19,7 @@ async function mockYouTubeIframe(page: Page) {
   })
 }
 
-const activePlaylistSession = { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "spotify" }
+const activePlaylistSession = { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "youtube" }
 
 test("@resilience restores a non-resolved round after refresh", async ({ page }) => {
   await mockYouTubeIframe(page)

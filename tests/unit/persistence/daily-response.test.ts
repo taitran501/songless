@@ -68,5 +68,18 @@ describe("Daily response validation", () => {
         ),
       /invalid|unverified/i
     )
+
+    const legacyProvider = dailyTracks.map((track) => ({ ...track }))
+    legacyProvider[0].source = "spotify" as const
+    legacyProvider[0].uri = "spotify:legacy-daily"
+    legacyProvider[0].videoId = undefined
+    assert.throws(
+      () =>
+        parseDailyResponse(
+          { dateKey: "2026-08-27", ...responseMetadata, tracks: legacyProvider },
+          "2026-08-27"
+        ),
+      /unverified audio source/i
+    )
   })
 })
