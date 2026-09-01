@@ -51,6 +51,24 @@ test("Spotify playlist provider boundary", async (t) => {
     assert.equal(calls, 0)
   })
 
+  await t.test("maps rejected token credentials to an actionable provider error", async () => {
+    process.env.SPOTIFY_CLIENT_ID = "client-id-rejected"
+    process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
+    globalThis.fetch = async (input) => {
+      if (String(input).includes("accounts.spotify.com")) {
+        return jsonResponse({ error: "invalid_client" }, 400)
+      }
+      return jsonResponse({})
+    }
+
+    const response = await GET(request("playlist123"))
+    assert.equal(response.status, 503)
+    assert.deepEqual(await response.json(), {
+      error: "Spotify credentials were rejected. Check the server credentials and try again.",
+      code: "spotify_credentials_rejected",
+    })
+  })
+
   await t.test("fails closed on malformed provider payloads", async () => {
     process.env.SPOTIFY_CLIENT_ID = "client-id-malformed"
     process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
@@ -116,6 +134,45 @@ test("Spotify playlist provider boundary", async (t) => {
     assert.equal(response.headers.get("Retry-After"), "12")
   })
 
+  await t.test("does not mislabel a generic Spotify 403 as a private playlist", async () => {
+    process.env.SPOTIFY_CLIENT_ID = "client-id-provider-denied"
+    process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.includes("accounts.spotify.com")) return jsonResponse({ access_token: "token", expires_in: 3600 })
+      return url.includes("?fields=name")
+        ? jsonResponse({ error: { status: 403, message: "Forbidden" } }, 403)
+        : jsonResponse({ items: [] })
+    }
+
+    const response = await GET(request("playlist123"))
+    assert.equal(response.status, 503)
+    assert.deepEqual(await response.json(), {
+      error:
+        "Spotify denied access to this request. The playlist may be private, or Spotify access is not enabled for this deployment.",
+      code: "spotify_provider_unavailable",
+    })
+  })
+
+  await t.test("preserves private playlist classification when Spotify says it is unavailable", async () => {
+    process.env.SPOTIFY_CLIENT_ID = "client-id-private"
+    process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.includes("accounts.spotify.com")) return jsonResponse({ access_token: "token", expires_in: 3600 })
+      return url.includes("?fields=name")
+        ? jsonResponse({ error: { status: 403, message: "Playlist is private or unavailable" } }, 403)
+        : jsonResponse({ items: [] })
+    }
+
+    const response = await GET(request("playlist123"))
+    assert.equal(response.status, 403)
+    assert.deepEqual(await response.json(), {
+      error: "This Spotify playlist is private or unavailable.",
+      code: "spotify_playlist_private_or_unavailable",
+    })
+  })
+
   await t.test("refreshes a revoked cached token once", async () => {
     process.env.SPOTIFY_CLIENT_ID = "client-id-refresh"
     process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
@@ -131,6 +188,31 @@ test("Spotify playlist provider boundary", async (t) => {
         metadataCalls += 1
         if (metadataCalls === 1) return jsonResponse({ error: "expired" }, 401)
         return jsonResponse({ name: "Refreshed Playlist" })
+      }
+      return jsonResponse({ items: [validTrack], next: null })
+    }
+
+    const response = await GET(request("playlist123"))
+    assert.equal(response.status, 200)
+    assert.equal(tokenCalls, 2)
+    assert.equal(metadataCalls, 2)
+  })
+
+  await t.test("refreshes a cached token once after a provider 403", async () => {
+    process.env.SPOTIFY_CLIENT_ID = "client-id-forbidden-refresh"
+    process.env.SPOTIFY_CLIENT_SECRET = "client-secret"
+    let tokenCalls = 0
+    let metadataCalls = 0
+    globalThis.fetch = async (input) => {
+      const url = String(input)
+      if (url.includes("accounts.spotify.com")) {
+        tokenCalls += 1
+        return jsonResponse({ access_token: `token-${tokenCalls}`, expires_in: 3600 })
+      }
+      if (url.includes("?fields=name")) {
+        metadataCalls += 1
+        if (metadataCalls === 1) return jsonResponse({ error: { status: 403, message: "Forbidden" } }, 403)
+        return jsonResponse({ name: "Refreshed after forbidden" })
       }
       return jsonResponse({ items: [validTrack], next: null })
     }

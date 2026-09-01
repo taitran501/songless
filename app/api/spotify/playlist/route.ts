@@ -7,11 +7,20 @@ const MAX_PLAYLIST_TRACKS = 1000
 const MAX_PLAYLIST_PAGES = 20
 const SPOTIFY_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/
 
+type SpotifyErrorCode =
+  | "spotify_not_configured"
+  | "spotify_credentials_rejected"
+  | "spotify_playlist_private_or_unavailable"
+  | "spotify_playlist_not_found"
+  | "spotify_rate_limited"
+  | "spotify_provider_unavailable"
+
 class SpotifyProviderError extends Error {
   constructor(
     message: string,
     public status = 502,
-    public retryAfter?: string | null
+    public retryAfter?: string | null,
+    public code: SpotifyErrorCode = "spotify_provider_unavailable"
   ) {
     super(message)
     this.name = "SpotifyProviderError"
@@ -50,29 +59,110 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
+async function readProviderErrorMessage(response: Response) {
+  try {
+    const payload = await response.json()
+    if (!payload || typeof payload !== "object") return ""
+
+    const error = (payload as { error?: unknown }).error
+    if (typeof error === "string") return error
+    if (error && typeof error === "object" && typeof (error as { message?: unknown }).message === "string") {
+      return (error as { message: string }).message
+    }
+  } catch {
+    // The status code still gives us a safe, user-facing classification.
+  }
+  return ""
+}
+
 function getRetryAfter(response: Response) {
   const value = response.headers.get("Retry-After")
   return value && /^\d{1,6}$/.test(value.trim()) ? value.trim() : null
 }
 
-function getSpotifyErrorMessage(status: number) {
-  if (status === 401 || status === 403) {
-    return "This Spotify playlist is private or unavailable."
+function getSpotifyTokenError(status: number) {
+  if (status === 400 || status === 401 || status === 403) {
+    return {
+      message: "Spotify credentials were rejected. Check the server credentials and try again.",
+      status: 503,
+      code: "spotify_credentials_rejected" as const,
+    }
   }
-  if (status === 404) return "This Spotify playlist could not be found."
-  if (status === 429) return "Spotify is rate-limiting requests. Please try again shortly."
-  if (status >= 500) return "Spotify is temporarily unavailable. Please try again."
-  return "Failed to fetch playlist."
+  if (status === 429) {
+    return {
+      message: "Spotify is rate-limiting requests. Please try again shortly.",
+      status: 429,
+      code: "spotify_rate_limited" as const,
+    }
+  }
+  return {
+    message:
+      status >= 500
+        ? "Spotify is temporarily unavailable. Please try again."
+        : "Spotify playlist loading failed. Please try again.",
+    status: status >= 500 ? 502 : 503,
+    code: "spotify_provider_unavailable" as const,
+  }
 }
 
-function getSpotifyTokenError(status: number) {
-  if (status === 401 || status === 403) return "Spotify credentials were rejected."
-  return getSpotifyErrorMessage(status)
+function getSpotifyPlaylistError(status: number, upstreamMessage = "") {
+  const normalizedMessage = upstreamMessage.toLowerCase()
+  if (status === 404 || /not found/.test(normalizedMessage)) {
+    return {
+      message: "This Spotify playlist could not be found.",
+      status: 404,
+      code: "spotify_playlist_not_found" as const,
+    }
+  }
+  if (status === 401) {
+    return {
+      message: "Spotify authorization was rejected. Check the server credentials and try again.",
+      status: 503,
+      code: "spotify_credentials_rejected" as const,
+    }
+  }
+  if (status === 403) {
+    if (/private|unavailable/.test(normalizedMessage)) {
+      return {
+        message: "This Spotify playlist is private or unavailable.",
+        status: 403,
+        code: "spotify_playlist_private_or_unavailable" as const,
+      }
+    }
+    return {
+      message:
+        "Spotify denied access to this request. The playlist may be private, or Spotify access is not enabled for this deployment.",
+      status: 503,
+      code: "spotify_provider_unavailable" as const,
+    }
+  }
+  if (status === 429) {
+    return {
+      message: "Spotify is rate-limiting requests. Please try again shortly.",
+      status: 429,
+      code: "spotify_rate_limited" as const,
+    }
+  }
+  if (status >= 500) {
+    return {
+      message: "Spotify is temporarily unavailable. Please try again.",
+      status: 502,
+      code: "spotify_provider_unavailable" as const,
+    }
+  }
+  return {
+    message: "Spotify playlist loading failed. Please try again.",
+    status: 502,
+    code: "spotify_provider_unavailable" as const,
+  }
 }
 
 function providerErrorResponse(error: SpotifyProviderError) {
   const headers = error.retryAfter ? { "Retry-After": error.retryAfter } : undefined
-  return NextResponse.json({ error: error.message }, { status: error.status, headers })
+  return NextResponse.json(
+    { error: error.message, code: error.code },
+    { status: error.status, headers }
+  )
 }
 
 async function getClientCredentialsToken() {
@@ -97,16 +187,12 @@ async function getClientCredentialsToken() {
   })
 
   if (!response.ok) {
+    const error = getSpotifyTokenError(response.status)
     throw new SpotifyProviderError(
-      getSpotifyTokenError(response.status),
-      response.status === 429
-        ? 429
-        : response.status === 401 || response.status === 403
-          ? 503
-          : response.status >= 500
-            ? 502
-            : 502,
-      getRetryAfter(response)
+      error.message,
+      error.status,
+      getRetryAfter(response),
+      error.code
     )
   }
 
@@ -135,7 +221,7 @@ async function fetchSpotifyApi(
   const request = (token: string) =>
     fetchSpotify(input, { headers: { Authorization: `Bearer ${token}` } })
   let response = await request(accessToken)
-  if (response.status !== 401) return { response, accessToken }
+  if (response.status !== 401 && response.status !== 403) return { response, accessToken }
 
   // A cached token can be revoked before its advertised expiry. Refresh once
   // so a transient Spotify auth rotation does not strand the playlist run.
@@ -211,7 +297,10 @@ export async function GET(request: NextRequest) {
     let accessToken = await getClientCredentialsToken()
     if (!accessToken) {
       return NextResponse.json(
-        { error: "Public Spotify playlist loading is not configured." },
+        {
+          error: "Public Spotify playlist loading is not configured.",
+          code: "spotify_not_configured" satisfies SpotifyErrorCode,
+        },
         { status: 503 }
       )
     }
@@ -224,10 +313,15 @@ export async function GET(request: NextRequest) {
     accessToken = metadataResult.accessToken
     const metadataResponse = metadataResult.response
     if (!metadataResponse.ok) {
+      const providerError = getSpotifyPlaylistError(
+        metadataResponse.status,
+        await readProviderErrorMessage(metadataResponse)
+      )
       throw new SpotifyProviderError(
-        getSpotifyErrorMessage(metadataResponse.status),
-        metadataResponse.status === 429 ? 429 : metadataResponse.status >= 500 ? 502 : metadataResponse.status,
-        getRetryAfter(metadataResponse)
+        providerError.message,
+        providerError.status,
+        getRetryAfter(metadataResponse),
+        providerError.code
       )
     }
     const metadata = await readJson(metadataResponse)
@@ -256,10 +350,15 @@ export async function GET(request: NextRequest) {
       accessToken = result.accessToken
       const response = result.response
       if (!response.ok) {
+        const providerError = getSpotifyPlaylistError(
+          response.status,
+          await readProviderErrorMessage(response)
+        )
         throw new SpotifyProviderError(
-          getSpotifyErrorMessage(response.status),
-          response.status === 429 ? 429 : response.status >= 500 ? 502 : response.status,
-          getRetryAfter(response)
+          providerError.message,
+          providerError.status,
+          getRetryAfter(response),
+          providerError.code
         )
       }
 
