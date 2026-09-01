@@ -63,5 +63,5 @@ export function hasLoadedPlaylistSelection(
   activePlaylistId: string | null | undefined,
   tracks: readonly GameTrack[]
 ) {
-  return Boolean(activePlaylistId?.trim() && tracks.length > 0)
+  return Boolean(activePlaylistId && isYouTubePlaylistInput(activePlaylistId) && tracks.length > 0)
 }

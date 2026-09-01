@@ -18,8 +18,9 @@ const track = {
 test("playlist selection requires an owner id and tracks", () => {
   assert.equal(hasLoadedPlaylistSelection(null, [track]), false)
   assert.equal(hasLoadedPlaylistSelection("   ", [track]), false)
-  assert.equal(hasLoadedPlaylistSelection("playlist-123", []), false)
-  assert.equal(hasLoadedPlaylistSelection("playlist-123", [track]), true)
+  assert.equal(hasLoadedPlaylistSelection("spotify:playlist:legacy", [track]), false)
+  assert.equal(hasLoadedPlaylistSelection("PLyoutubeplaylist1234567", []), false)
+  assert.equal(hasLoadedPlaylistSelection("PLyoutubeplaylist1234567", [track]), true)
 })
 
 test("recent playlist migration keeps YouTube entries and removes legacy providers", () => {
