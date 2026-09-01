@@ -1,6 +1,7 @@
 import type { GameTrack, TrackAudioSourceType } from "@/lib/tracks"
 
 const YOUTUBE_TIMEOUT_MS = 10000
+const YOUTUBE_PLAYLIST_ID_PATTERN = /^(PL|UU|FL|LL|RD|OLMC)[a-zA-Z0-9_-]{16,38}$/
 const YOUTUBE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -59,23 +60,29 @@ export function extractYouTubePlaylistId(input: string): string | null {
 
   try {
     const url = new URL(trimmed)
+    const hostname = url.hostname.toLowerCase()
+    const isYouTubeHost =
+      hostname === "youtube.com" ||
+      hostname.endsWith(".youtube.com") ||
+      hostname === "youtu.be" ||
+      hostname.endsWith(".youtu.be")
+    if (!isYouTubeHost) return null
     const listId = url.searchParams.get("list")
-    if (listId) return listId
+    if (listId && /^[a-zA-Z0-9_-]{18,40}$/.test(listId)) return listId
   } catch {
-    // Fall through to regex.
+    // Inputs without a scheme are handled by the explicit host regex below.
   }
 
-  const match = trimmed.match(/[&?]list=([a-zA-Z0-9_-]{18,40})/)
+  const match = trimmed.match(
+    /(?:^|\/\/)(?:www\.|music\.)?youtube\.com\/[^\s?]+\?[^\s#]*\blist=([a-zA-Z0-9_-]{18,40})/i
+  )
   return match?.[1] || null
 }
 
 export function isYouTubePlaylistInput(input: string): boolean {
   const trimmed = input.trim()
-  return (
-    trimmed.includes("youtube.com") ||
-    trimmed.includes("youtu.be") ||
-    /^(PL|UU|FL|LL|RD|OLMC)[a-zA-Z0-9_-]{16,38}$/.test(trimmed)
-  )
+  if (YOUTUBE_PLAYLIST_ID_PATTERN.test(trimmed)) return true
+  return Boolean(extractYouTubePlaylistId(trimmed))
 }
 
 function parseDuration(durationStr: string): number {
