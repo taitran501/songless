@@ -115,3 +115,24 @@ test("@playlist rejects retired provider URLs without a provider request", async
   expect(retiredProviderRequest).toBe(false)
   await expect(page.getByTestId("start-playlist-game")).toHaveCount(0)
 })
+
+test("@playlist hides and persists-clean legacy recent playlist entries", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "recent_playlists",
+      JSON.stringify([
+        { id: "https://open.spotify.com/playlist/legacy123", name: "Legacy provider", trackCount: 2 },
+        { id: "PLrecentyoutube1234567", name: "YouTube Mix", trackCount: 3 },
+      ])
+    )
+  })
+
+  await page.goto("/playlist")
+  await expect(page.getByText("YouTube Mix", { exact: true })).toBeVisible()
+  await expect(page.getByText("Legacy provider", { exact: true })).toHaveCount(0)
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("recent_playlists") || "[]")))
+    .toEqual([
+      { id: "PLrecentyoutube1234567", name: "YouTube Mix", trackCount: 3, source: "youtube" },
+    ])
+})

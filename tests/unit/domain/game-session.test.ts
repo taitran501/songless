@@ -85,6 +85,25 @@ describe("game session persistence", () => {
     assert.equal(session.status, "active")
   })
 
+  it("reads a legacy Spotify-valued session without creating a provider request", () => {
+    const storage = new MemoryStorage()
+    storage.setItem(
+      GAME_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        kind: "playlist",
+        playbackMode: "audio",
+        id: "legacy-playlist",
+        runId: "legacy-playlist-run",
+        playlistSource: "spotify",
+        status: "active",
+        startedAt: "2026-08-27T00:00:00.000Z",
+      })
+    )
+
+    const session = readGameSession(storage)
+    assert.equal(session?.playlistSource, "spotify")
+  })
+
   it("round-trips a completed session status", () => {
     const storage = new MemoryStorage()
     const session = createGameSession({
