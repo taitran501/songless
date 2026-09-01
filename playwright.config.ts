@@ -26,10 +26,6 @@ export default defineConfig({
         reuseExistingServer: false,
         stdout: "pipe",
         stderr: "pipe",
-        env: {
-          SPOTIFY_CLIENT_ID: "test-client-id",
-          SPOTIFY_CLIENT_SECRET: "test-client-secret",
-        },
       },
   projects: [
     {

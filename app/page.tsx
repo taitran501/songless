@@ -483,7 +483,7 @@ export default function HomePage() {
               <ListMusic className="h-6 w-6 text-sky-300" />
             </div>
             <span className="mt-5 font-display text-[10px] font-bold uppercase tracking-[0.18em] text-sky-300">
-              YouTube · public Spotify
+              YouTube playlist
             </span>
             <h2 className="mt-1 font-display text-xl font-bold text-white">Playlist Mode</h2>
             <p className="mt-2 flex-1 text-sm leading-relaxed text-[#a8b0bf]">

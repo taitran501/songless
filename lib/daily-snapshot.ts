@@ -4,6 +4,7 @@ import { isValidDateKey } from "@/lib/date-key"
 import {
   hasApprovedAudioStart,
   hasPlayableAudioSource,
+  isYoutubeTrack,
   type GameTrack,
   type GenreEvidenceSource,
 } from "@/lib/tracks"
@@ -112,6 +113,9 @@ export function assertDailyTracks(tracks: readonly GameTrack[]) {
   }
 
   for (const track of tracks) {
+    if (!isYoutubeTrack(track)) {
+      throw new DailySnapshotValidationError(`Track ${getDailyTrackId(track)} is not a YouTube source.`)
+    }
     if (!hasPlayableAudioSource(track)) {
       throw new DailySnapshotValidationError(`Track ${getDailyTrackId(track)} has no playable audio source.`)
     }

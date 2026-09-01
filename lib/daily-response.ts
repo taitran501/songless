@@ -5,6 +5,7 @@ import {
   hasApprovedAudioStart,
   hasPlayableAudioSource,
   normalizeTracks,
+  isYoutubeTrack,
   type GameTrack,
 } from "@/lib/tracks"
 
@@ -76,6 +77,7 @@ export function parseDailyResponse(value: unknown, expectedDateKey: string): Gam
     tracks.some(
       (track) =>
         track.dailyEligible !== true ||
+        !isYoutubeTrack(track) ||
         !hasPlayableAudioSource(track) ||
         !track.genreEvidence ||
         track.audioAnalysisStatus !== "approved" ||

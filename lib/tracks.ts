@@ -1,3 +1,8 @@
+/**
+ * Spotify is retained only so old localStorage runs can be normalized and
+ * played through their legacy preview URL. New catalog, playlist, and Daily
+ * code must emit YouTube tracks.
+ */
 export type TrackSource = "spotify" | "youtube"
 export type GameMode = "audio" | "lyrics"
 export type TrackGenre = "usuk" | "vpop" | "rap"
@@ -135,6 +140,8 @@ export function normalizeTracks(tracks: unknown): GameTrack[] {
 }
 
 export function isSpotifyTrack(track: GameTrack): boolean {
+  // Legacy compatibility predicate; no new provider request is created from
+  // this value.
   return track.source === "spotify" || track.uri.startsWith("spotify:")
 }
 
