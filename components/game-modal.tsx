@@ -110,7 +110,7 @@ export function GameModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={() => undefined}>
-      <DialogContent showCloseButton={false} className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center outline-none ${
+      <DialogContent showCloseButton={false} data-testid="game-result-modal" className={`w-[calc(100vw-2rem)] max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto backdrop-blur-3xl rounded-2xl p-4 sm:p-6 border-[1.5px] text-white flex flex-col items-center outline-none ${
         correct
           ? "bg-[#090d16]/90 border-[#10b981] shadow-[0_0_25px_rgba(16,185,129,0.3),inset_0_0_15px_rgba(16,185,129,0.1)]"
           : "bg-[#090d16]/90 border-[#ef4444] shadow-[0_0_25px_rgba(239,68,68,0.3),inset_0_0_15px_rgba(239,68,68,0.1)]"

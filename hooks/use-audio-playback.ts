@@ -184,6 +184,7 @@ export function useAudioPlayback({
   const youtubePlaybackFailedRef = useRef(false)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const youtubePlayerReadyTimeoutRef = useRef<number | null>(null)
   const playSessionIdRef = useRef(0)
   const playbackGenerationRef = useRef(0)
   const trackPlaybackKeyRef = useRef<string | null>(null)
@@ -215,6 +216,13 @@ export function useAudioPlayback({
   const destroyYoutubePlayer = useCallback(() => {
     const player = ytPlayerRef.current
     const mount = youtubeMountRef.current
+
+    // Invalidate the refs before calling into the asynchronous YouTube API so
+    // stale callbacks cannot observe this player as the active one.
+    ytPlayerRef.current = null
+    ytPlayerKeyRef.current = null
+    youtubeMountRef.current = null
+
     if (player) {
       try {
         player.stopVideo?.()
@@ -227,11 +235,8 @@ export function useAudioPlayback({
         // The player may already be gone during a route transition.
       }
     }
-    ytPlayerRef.current = null
-    ytPlayerKeyRef.current = null
     setYtPlayer(null)
     setYtPlayerKey(null)
-    youtubeMountRef.current = null
     if (mount?.parentElement === youtubeContainerRef.current) {
       mount.remove()
     }
@@ -251,7 +256,13 @@ export function useAudioPlayback({
   const pauseCurrentPlayback = useCallback(async () => {
     audioRef.current?.pause()
     const player = ytPlayerRef.current
-    if (player && typeof player.pauseVideo === "function") {
+    const mount = youtubeMountRef.current
+    if (
+      player &&
+      mount?.isConnected &&
+      mount.parentElement === youtubeContainerRef.current &&
+      typeof player.pauseVideo === "function"
+    ) {
       try {
         player.pauseVideo()
       } catch (error) {
@@ -267,6 +278,42 @@ export function useAudioPlayback({
     setIsPaused(false)
     setProgress(0)
   }, [clearPlaybackTimers])
+
+  const disposeCurrentPlayback = useCallback(async () => {
+    playbackGenerationRef.current += 1
+    trackPlaybackKeyRef.current = null
+    youtubeResolveControllerRef.current?.abort()
+    youtubeResolveControllerRef.current = null
+    playSessionIdRef.current += 1
+    clearPlaybackTimers()
+    if (youtubePlayerReadyTimeoutRef.current) {
+      clearTimeout(youtubePlayerReadyTimeoutRef.current)
+      youtubePlayerReadyTimeoutRef.current = null
+    }
+
+    try {
+      audioRef.current?.pause()
+    } catch {
+      // The audio element may already be detached during a route transition.
+    }
+
+    destroyYoutubePlayer()
+    youtubeVideoIdRef.current = null
+    youtubeRetryCountRef.current = 0
+    failedVideoIdsRef.current = new Set()
+    youtubePlaybackFailedRef.current = false
+    updateActiveYoutubeSource(null)
+    setYoutubeVideoId(null)
+    setPlaybackError(null)
+    setIsResolvingAudio(false)
+    setIsRetryingAudio(false)
+    setRetryAvailable(false)
+    setLoadingStep(null)
+    setUseYoutubeFallback(false)
+    setIsPlaying(false)
+    setIsPaused(false)
+    setProgress(0)
+  }, [clearPlaybackTimers, destroyYoutubePlayer, updateActiveYoutubeSource])
 
   const startProgressTimer = useCallback(
     (duration: number, initialElapsed = 0) => {
@@ -545,10 +592,12 @@ export function useAudioPlayback({
     }
 
     const playerReadyTimeout = window.setTimeout(() => {
+      youtubePlayerReadyTimeoutRef.current = null
       if (!playerReady) {
         markPlayerError("Could not load this YouTube audio in time. Try again.", false)
       }
     }, AUDIO_LOAD_TIMEOUT_MS)
+    youtubePlayerReadyTimeoutRef.current = playerReadyTimeout
 
     const initPlayer = () => {
       if (!isCurrentGeneration()) return
@@ -582,6 +631,9 @@ export function useAudioPlayback({
               if (!isCurrentPlayer()) return
               playerReady = true
               clearTimeout(playerReadyTimeout)
+              if (youtubePlayerReadyTimeoutRef.current === playerReadyTimeout) {
+                youtubePlayerReadyTimeoutRef.current = null
+              }
               try {
                 event.target.unMute()
                 event.target.setVolume(100)
@@ -631,6 +683,9 @@ export function useAudioPlayback({
     return () => {
       isMounted = false
       clearTimeout(playerReadyTimeout)
+      if (youtubePlayerReadyTimeoutRef.current === playerReadyTimeout) {
+        youtubePlayerReadyTimeoutRef.current = null
+      }
       if (containerRetryTimeout) clearTimeout(containerRetryTimeout)
       if (playerMount && youtubeMountRef.current === playerMount && !ytPlayerRef.current) {
         playerMount.remove()
@@ -858,6 +913,7 @@ export function useAudioPlayback({
     resume,
     pauseCurrentPlayback,
     resetPlayback,
+    disposeCurrentPlayback,
     retryAudioSource,
   }
 }

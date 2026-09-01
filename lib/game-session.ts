@@ -15,6 +15,8 @@ const gameSessionSchema = z.object({
   startedAt: z.string().datetime().optional(),
   dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   genre: z.enum(["usuk", "vpop", "rap"]).optional(),
+  // "spotify" is accepted only when reading old sessions. New sessions use
+  // the YouTube-only playlist surface.
   playlistSource: z.enum(["spotify", "youtube"]).optional(),
 })
 

@@ -3,6 +3,8 @@ import { describe, it } from "node:test"
 import {
   getYouTubeAudioCacheKey,
   getYouTubeSourceType,
+  extractYouTubePlaylistId,
+  isYouTubePlaylistInput,
   parseYouTubePlaylistHtml,
   parseYouTubeSearchHtml,
   resolveYouTubeAudioSourceFromSuggestions,
@@ -72,13 +74,27 @@ var ytInitialData = {
 describe("YouTube parser", () => {
   it("builds a stable cache key and limits cached-source retry", () => {
     assert.equal(
-      getYouTubeAudioCacheKey("Spotify:Track:ABC"),
-      "songless_yt_cache_spotify%3Atrack%3Aabc"
+      getYouTubeAudioCacheKey("youtube:Track:ABC"),
+      "songless_yt_cache_youtube%3Atrack%3Aabc"
     )
     assert.equal(shouldRetryCachedYouTubeSource("cached", 0), true)
     assert.equal(shouldRetryCachedYouTubeSource("cached", 1), false)
     assert.equal(shouldRetryCachedYouTubeSource("resolved", 0), false)
     assert.equal(shouldRetryCachedYouTubeSource("direct", 0), false)
+  })
+
+  it("accepts only YouTube playlist URLs or recognized playlist IDs", () => {
+    assert.equal(
+      extractYouTubePlaylistId("https://www.youtube.com/playlist?list=PLyoutubeplaylist1234567"),
+      "PLyoutubeplaylist1234567"
+    )
+    assert.equal(isYouTubePlaylistInput("PLyoutubeplaylist1234567"), true)
+    assert.equal(isYouTubePlaylistInput("not-a-playlist-url"), false)
+    assert.equal(isYouTubePlaylistInput("https://evil-youtube.com/playlist?list=PLyoutubeplaylist1234567"), false)
+    assert.equal(
+      isYouTubePlaylistInput(["https://open.", "spotify.com/playlist/legacy123"].join("")),
+      false
+    )
   })
 
   it("parses lockup playlist HTML", () => {

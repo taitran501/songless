@@ -1,10 +1,10 @@
 import { expect, test, type Page } from "@playwright/test"
 
 const playlistTracks = [
-  { source: "spotify", uri: "spotify:playlist-one", name: "Playlist One", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: "https://example.test/preview.mp3" },
+  { source: "youtube", uri: "youtube:playlist-one", videoId: "playlist-one", name: "Playlist One", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: null },
   { source: "youtube", uri: "youtube:playlist-two", videoId: "playlist-two", name: "Playlist Two", artists: "Playlist Artist", duration_ms: 180000, albumImage: null, preview_url: null },
 ]
-const activePlaylistSession = { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "spotify" }
+const activePlaylistSession = { kind: "playlist", playbackMode: "audio", id: "playlist-fixture", runId: "playlist-fixture-run", playlistSource: "youtube" }
 
 async function seedGame(page: Page) {
   await page.addInitScript(({ nextTracks, nextSession }) => {
@@ -17,13 +17,14 @@ async function seedGame(page: Page) {
 async function seedCustomGame(page: Page) {
   const tracks = [
     {
-      source: "spotify" as const,
-      uri: "spotify:ambiguous-home",
+      source: "youtube" as const,
+      uri: "youtube:ambiguous-home",
+      videoId: "ambiguous-home",
       name: "Home",
       artists: "Artist A",
       duration_ms: 180000,
       albumImage: null,
-      preview_url: "https://example.test/preview.mp3",
+      preview_url: null,
     },
   ]
   const session = {

@@ -2,10 +2,6 @@
 
 // Check environment variables for deployment
 const requiredEnvVars = []
-const optionalEnvVars = [
-  'SPOTIFY_CLIENT_ID',
-  'SPOTIFY_CLIENT_SECRET',
-]
 const vercelEnvironment = process.env.VERCEL_ENV
 // Vercel sets NODE_ENV=production for both Preview and Production builds.
 // Prefer VERCEL_ENV when it is available so Preview does not inherit the
@@ -33,7 +29,6 @@ console.log('Checking environment variables...')
 
 const missingVars = []
 const presentVars = []
-const optionalPresentVars = []
 
 requiredEnvVars.forEach(varName => {
   if (process.env[varName]) {
@@ -44,21 +39,6 @@ requiredEnvVars.forEach(varName => {
     console.log(`MISSING ${varName}`)
   }
 })
-
-optionalEnvVars.forEach(varName => {
-  if (process.env[varName]) {
-    optionalPresentVars.push(varName)
-    console.log(`OK optional ${varName}: set`)
-  } else {
-    console.log(`OPTIONAL ${varName}: not set (Spotify playlist loading stays disabled)`)
-  }
-})
-
-const hasPartialSpotifyCredentials =
-  Boolean(process.env.SPOTIFY_CLIENT_ID) !== Boolean(process.env.SPOTIFY_CLIENT_SECRET)
-if (hasPartialSpotifyCredentials) {
-  console.log('WARNING Spotify credentials are incomplete; public Spotify playlist loading will return 503.')
-}
 
 if (isVercelPreview && !redisConfigured) {
   console.log('WARNING Daily Redis is not configured for Preview; /api/daily will fail closed until it is provisioned.')
@@ -72,7 +52,6 @@ deploymentEnvVars.forEach(varName => {
 console.log('\nSummary:')
 const totalChecks = requiredEnvVars.length + deploymentEnvVars.length
 console.log(`Present: ${presentVars.length}/${totalChecks}`)
-console.log(`Optional configured: ${optionalPresentVars.length}/${optionalEnvVars.length}`)
 console.log(`Missing: ${missingVars.length}/${totalChecks}`)
 
 if (missingVars.length > 0) {

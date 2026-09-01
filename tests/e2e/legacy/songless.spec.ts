@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
 
+// Legacy compatibility fixture: old local runs may still contain Spotify
+// preview URLs, which playback reads without creating a provider request.
 const mockTracks = [
   {
     source: "spotify",
@@ -41,7 +43,7 @@ const mockYoutubeTrackWithAudioStart = [
   },
 ]
 
-const mockSpotifyNoPreviewTracks = [
+const mockLegacyNoPreviewTracks = [
   {
     source: "spotify",
     uri: "spotify:track:no-preview",
@@ -310,22 +312,22 @@ test("allows unauthenticated users to access the playlist page as guest", async 
 })
 
 test("loads playlist tracks and enables the start-game state", async ({ page }) => {
-  await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
+  await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(mockTracks),
+      body: JSON.stringify(mockYoutubeTracks),
     })
   })
 
   await page.goto("/playlist")
 
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("playlist123")
+  await page.getByPlaceholder("https://www.youtube.com/playlist?list=...").fill("PLplaylist123456789012")
   await page.getByRole("button", { name: "Load Playlist" }).click()
 
   await expect(page.getByText(/playlist loaded/i)).toBeVisible()
   await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
+  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("Em")
 })
 
 test("shows playlist mode and lets the user return home", async ({ page }) => {
@@ -352,7 +354,7 @@ test("loads YouTube playlist tracks and enables the start-game state", async ({ 
 
   await page.goto("/playlist")
 
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
+  await page.getByPlaceholder("https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
   await page.getByRole("button", { name: "Load Playlist" }).click()
 
   await expect(page.getByText(/playlist loaded/i)).toBeVisible()
@@ -379,7 +381,7 @@ test("lets a guest load a YouTube playlist and play the game", async ({ page }) 
   await page.getByRole("button", { name: "Open Playlist Setup" }).click()
   await expect(page.getByText("Guest mode is active")).toBeVisible()
 
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
+  await page.getByPlaceholder("https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=PLpY7hx7jry7zc4zspi_fBhWQt8z5jrJ8z")
   await page.getByRole("button", { name: "Load Playlist" }).click()
   await expect(page.getByText(/playlist loaded/i)).toBeVisible()
 
@@ -788,7 +790,7 @@ test("routes an untouched playlist run back to playlist setup without confirmati
       playbackMode: "audio",
       id: "playlist-navigation",
       runId: "playlist-navigation-run",
-      playlistSource: "spotify",
+      playlistSource: "youtube",
     }),
   })
 
@@ -894,7 +896,7 @@ test("reports share failure when clipboard rejects", async ({ page }) => {
   await expect(page.getByText("Copied to clipboard!")).toHaveCount(0)
 })
 
-test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
+test("plays legacy preview tracks through HTML audio", async ({ page }) => {
   await mockHtmlAudio(page)
   await seedStorage(page, {
     game_tracks: JSON.stringify(mockTracks),
@@ -909,7 +911,7 @@ test("plays Spotify preview tracks through HTML audio", async ({ page }) => {
   await expect.poll(async () => page.evaluate(() => (window as any).__audioEvents.lastSrc)).toContain("SoundHelix-Song-1.mp3")
 })
 
-test("shows an audio error when Spotify preview playback fails", async ({ page }) => {
+test("shows an audio error when a legacy preview playback fails", async ({ page }) => {
   await mockBrokenHtmlAudio(page)
   await seedStorage(page, {
     game_tracks: JSON.stringify(mockTracks),
@@ -979,7 +981,7 @@ test("starts YouTube playback from the configured audio start point", async ({ p
 
 test("shows an audio error when YouTube fallback search fails", async ({ page }) => {
   await seedStorage(page, {
-    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    game_tracks: JSON.stringify(mockLegacyNoPreviewTracks),
   })
 
   await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
@@ -997,10 +999,10 @@ test("shows an audio error when YouTube fallback search fails", async ({ page })
   await expect(page.getByLabel("Play preview")).toBeDisabled()
 })
 
-test("falls back from Spotify no-preview tracks to YouTube playback", async ({ page }) => {
+test("falls back from a legacy no-preview track to YouTube playback", async ({ page }) => {
   await mockYouTubeIframe(page)
   await seedStorage(page, {
-    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    game_tracks: JSON.stringify(mockLegacyNoPreviewTracks),
   })
 
   await page.route("**/api/youtube/search?title=*&artists=*", async (route) => {
@@ -1023,34 +1025,6 @@ test("falls back from Spotify no-preview tracks to YouTube playback", async ({ p
 
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.play)).toBeGreaterThan(0)
   await expect.poll(async () => page.evaluate(() => (window as any).__ytEvents.cue)).toContain("6uVJqD2hSGQ")
-})
-
-test("lets a guest load a public Spotify playlist", async ({ page }) => {
-  await mockHtmlAudio(page)
-  await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      headers: {
-        "x-playlist-name": encodeURIComponent("Public Spotify Playlist"),
-      },
-      body: JSON.stringify(mockTracks),
-    })
-  })
-
-  await page.goto("/playlist")
-
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://open.spotify.com/playlist/playlist123")
-  await page.getByRole("button", { name: "Load Playlist" }).click()
-
-  await expect(page.getByText(/playlist loaded/i)).toBeVisible()
-  await expect(page.getByRole("button", { name: "Start Game" })).toBeVisible()
-  await expect.poll(async () => page.evaluate(() => window.localStorage.getItem("game_tracks"))).toContain("First Song")
-
-  await page.getByRole("button", { name: "Start Game" }).click()
-  await expect(page.getByText("Track 1 of 2")).toBeVisible()
-  await page.getByLabel("Play preview").click()
-  await expect.poll(async () => page.evaluate(() => (window as any).__audioEvents.play)).toBe(1)
 })
 
 test("prioritizes current playlist suggestions in guest YouTube mode", async ({ page }) => {
@@ -1126,7 +1100,7 @@ test("shows error when YouTube playlist fails to load", async ({ page }) => {
 
   await page.goto("/playlist")
 
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=invalid_id")
+  await page.getByPlaceholder("https://www.youtube.com/playlist?list=...").fill("https://www.youtube.com/playlist?list=invalid_id")
   await page.getByRole("button", { name: "Load Playlist" }).click()
 
   await expect(page.getByText("YouTube API returned error: Playlist does not exist")).toBeVisible()
@@ -1369,7 +1343,7 @@ test("replaces a stale YouTube cache entry and retries once", async ({ page }) =
     })
   })
   await seedStorage(page, {
-    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    game_tracks: JSON.stringify(mockLegacyNoPreviewTracks),
     songless_session_v2: JSON.stringify({
       kind: "playlist",
       playbackMode: "audio",
@@ -1403,7 +1377,7 @@ test("keeps Skip available after YouTube retry failure without looping", async (
     })
   })
   await seedStorage(page, {
-    game_tracks: JSON.stringify(mockSpotifyNoPreviewTracks),
+    game_tracks: JSON.stringify(mockLegacyNoPreviewTracks),
     songless_session_v2: JSON.stringify({
       kind: "playlist",
       playbackMode: "audio",
@@ -1495,18 +1469,19 @@ test("keeps only the newest suggestion response", async ({ page }) => {
 })
 
 test("keeps Playlist All unlimited beyond fifty tracks", async ({ page }) => {
-  await mockHtmlAudio(page)
+  await mockYouTubeIframe(page)
   const manyTracks = Array.from({ length: 51 }, (_, index) => ({
-    ...mockTracks[0],
-    uri: `spotify:track:many-${index}`,
+    ...mockYoutubeTracks[0],
+    uri: `youtube:track-many-${index}`,
+    videoId: `track-many-${index}`,
     name: `Many Song ${index + 1}`,
   }))
-  await page.route("**/api/spotify/playlist?playlistId=playlist123", async (route) => {
+  await page.route("**/api/youtube/playlist?url=*", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(manyTracks) })
   })
 
   await page.goto("/playlist")
-  await page.getByPlaceholder("https://open.spotify.com/playlist/... or https://www.youtube.com/playlist?list=...").fill("playlist123")
+  await page.getByPlaceholder("https://www.youtube.com/playlist?list=...").fill("PLplaylist123456789012")
   await page.getByRole("button", { name: "Load Playlist" }).click()
   await expect(page.getByText("Found 51 valid tracks in this playlist")).toBeVisible()
   await page.getByRole("button", { name: "All", exact: true }).click()

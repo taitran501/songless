@@ -19,6 +19,8 @@ const activeSession = {
   playlistSource: "youtube" as const,
 }
 
+// Legacy compatibility fixture: an old run with a preview URL must still be
+// playable and may fall back to verified YouTube without a Spotify request.
 const brokenPreviewTrack = {
   source: "spotify" as const,
   uri: "spotify:preview-broken",
@@ -162,15 +164,17 @@ test("@resilience keeps Skip available after the one audio fallback is exhausted
   await expect(page.getByPlaceholder(/Know the song\?/)).toBeEnabled()
 })
 
-test("@resilience falls back to verified YouTube when a Spotify preview expires", async ({ page }) => {
+test("@resilience falls back to verified YouTube when a legacy preview expires", async ({ page }) => {
   await page.addInitScript(() => {
     window.HTMLMediaElement.prototype.play = () => Promise.reject(new Error("preview expired"))
   })
   await mockYouTubeWithFailure(page, "never-fails")
   await seedGame(page, [brokenPreviewTrack], {
     ...activeSession,
-    id: "spotify-preview-fallback",
-    runId: "spotify-preview-fallback-run",
+    id: "legacy-preview-fallback",
+    runId: "legacy-preview-fallback-run",
+    // Legacy session compatibility: this value is read, never produced by
+    // the YouTube-only playlist setup.
     playlistSource: "spotify",
   })
   await page.route("**/api/youtube/search?*", async (route) => {

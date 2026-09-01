@@ -19,6 +19,7 @@ test("test catalog contract", async (t) => {
     assert.ok(dailyTracks.every((track) => track.dailyEligible === true))
     assert.ok(dailyTracks.every((track) => track.audioAnalysisStatus === "approved"))
     assert.ok(dailyTracks.every((track) => (track.audioStartSeconds ?? 0) > 0))
+    assert.ok(dailyTracks.every((track) => track.source === "youtube"))
   })
 
   await t.test("lyrics fixture has an eligible 2-2-1 genre mix", () => {
@@ -41,8 +42,10 @@ test("test catalog contract", async (t) => {
       assert.equal(tracks.length, 5, `${genre} must provide five tracks`)
       assertUniqueUris(`${genre} genre`, tracks)
       assert.ok(tracks.every((track) => track.genre === genre))
+      assert.ok(tracks.every((track) => track.source === "youtube"))
     }
     assertUniqueUris("playlist", playlistTracks)
+    assert.ok(playlistTracks.every((track) => track.source === "youtube"))
     assert.equal(unplayableYoutubeTrack.audioAnalysisStatus, "failed")
   })
 })

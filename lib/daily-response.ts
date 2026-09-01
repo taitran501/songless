@@ -5,10 +5,13 @@ import {
   hasApprovedAudioStart,
   hasPlayableAudioSource,
   normalizeTracks,
+  isYoutubeTrack,
   type GameTrack,
 } from "@/lib/tracks"
 
 const dailyTrackContractSchema = z.object({
+  // Keep the legacy enum for snapshot/session compatibility; validation below
+  // rejects non-YouTube tracks from newly served Daily responses.
   source: z.enum(["spotify", "youtube"]),
   uri: z.string().min(1),
   videoId: z.string().min(1).optional(),
@@ -76,6 +79,7 @@ export function parseDailyResponse(value: unknown, expectedDateKey: string): Gam
     tracks.some(
       (track) =>
         track.dailyEligible !== true ||
+        !isYoutubeTrack(track) ||
         !hasPlayableAudioSource(track) ||
         !track.genreEvidence ||
         track.audioAnalysisStatus !== "approved" ||

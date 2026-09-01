@@ -181,6 +181,20 @@ function createLyricsReplay(session: GameSessionMeta, currentTracks: GameTrack[]
   }
 }
 
+type GameModalContent = {
+  correct: boolean
+  track: GameTrack | null
+  guesses: string[]
+  trackIndex: number
+  pointsEarned: number
+}
+
+function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve())
+  })
+}
+
 export default function GamePage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -188,13 +202,7 @@ export default function GamePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [guess, setGuess] = useState("")
   const [showModal, setShowModal] = useState(false)
-  const [modalContent, setModalContent] = useState<{
-    correct: boolean
-    track: GameTrack | null
-    guesses: string[]
-    trackIndex: number
-    pointsEarned: number
-  }>({ correct: false, track: null, guesses: [], trackIndex: 0, pointsEarned: 0 })
+  const [modalContent, setModalContent] = useState<GameModalContent | null>(null)
   const [suggestions, setSuggestions] = useState<GuessSuggestion[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -207,6 +215,7 @@ export default function GamePage() {
   const [genreProgress, setGenreProgress] = useState<GenreProgressRecord>(EMPTY_GENRE_PROGRESS)
   const [dailyProgress, setDailyProgress] =
     useState<DailyProgressState>(EMPTY_DAILY_PROGRESS)
+  const [isTrackTransitioning, setIsTrackTransitioning] = useState(false)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const youtubeContainerRef = useRef<HTMLDivElement>(null)
   const roundActionLockRef = useRef(false)
@@ -249,7 +258,12 @@ export default function GamePage() {
   )
   const isRunComplete = playlistComplete || session?.status === "completed"
   const isRoundLocked =
-    isRunComplete || isRoundActionPending || isNextPending || showModal || isTrackResolved
+    isRunComplete ||
+    isRoundActionPending ||
+    isNextPending ||
+    isTrackTransitioning ||
+    showModal ||
+    isTrackResolved
   const navigation = getGameNavigation(session)
 
   const playback = useAudioPlayback({
@@ -661,8 +675,10 @@ export default function GamePage() {
     try {
       clearSavedGameModal(localStorage, session)
       setShowModal(false)
-      await stopRoundPlayback()
-      await new Promise<void>((resolve) => window.setTimeout(resolve, 220))
+      setModalContent(null)
+      setIsTrackTransitioning(true)
+      await waitForNextPaint()
+      await playback.disposeCurrentPlayback()
 
       if (currentIndex < tracks.length - 1) {
         setCurrentIndex(currentIndex + 1)
@@ -721,6 +737,7 @@ export default function GamePage() {
     } finally {
       nextActionLockRef.current = false
       setIsNextPending(false)
+      setIsTrackTransitioning(false)
     }
   }
 
@@ -1193,25 +1210,27 @@ export default function GamePage() {
           mode={gameMode}
         />
 
-        <GameModal
-          isOpen={showModal}
-          correct={modalContent.correct}
-          track={modalContent.track}
-          onNext={handleNextSong}
-          isNextPending={isNextPending}
-          onBack={() => {
-            requestExitRun()
-          }}
-          backLabel={navigation.exitLabel}
-          guesses={modalContent.guesses}
-          trackIndex={modalContent.trackIndex}
-          pointsEarned={modalContent.pointsEarned}
-          nextLabel={modalContent.trackIndex === tracks.length - 1 ? "VIEW SUMMARY" : "NEXT SONG"}
-          mode={gameMode}
-          dailyDate={dailyDate}
-          score={score}
-          session={session}
-        />
+        {showModal && modalContent && !isTrackTransitioning && (
+          <GameModal
+            isOpen
+            correct={modalContent.correct}
+            track={modalContent.track}
+            onNext={handleNextSong}
+            isNextPending={isNextPending}
+            onBack={() => {
+              requestExitRun()
+            }}
+            backLabel={navigation.exitLabel}
+            guesses={modalContent.guesses}
+            trackIndex={modalContent.trackIndex}
+            pointsEarned={modalContent.pointsEarned}
+            nextLabel={modalContent.trackIndex === tracks.length - 1 ? "VIEW SUMMARY" : "NEXT SONG"}
+            mode={gameMode}
+            dailyDate={dailyDate}
+            score={score}
+            session={session}
+          />
+        )}
 
         <AlertDialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
           <AlertDialogContent className="border-white/10 bg-[#090d16] text-white">

@@ -7,6 +7,7 @@ export type FixtureSessionInput = {
   startedAt?: string
   dateKey?: string
   genre?: "usuk" | "vpop" | "rap"
+  /** Legacy sessions may still carry spotify; new fixtures are YouTube. */
   playlistSource?: "spotify" | "youtube"
 }
 
@@ -39,7 +40,7 @@ export const activePlaylistSession: FixtureSessionInput = {
   playbackMode: "audio",
   id: "playlist-fixture",
   runId: "playlist-fixture-run",
-  playlistSource: "spotify",
+  playlistSource: "youtube",
   startedAt: "2026-08-27T00:00:00.000Z",
 }
 

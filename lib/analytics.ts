@@ -6,6 +6,7 @@ export type RunAnalyticsContext = {
   kind: GameSessionKind
   playbackMode: GameMode
   genre?: TrackGenre
+  /** Legacy value is allowed in historical events; new runs emit youtube. */
   playlistSource?: "spotify" | "youtube"
 }
 

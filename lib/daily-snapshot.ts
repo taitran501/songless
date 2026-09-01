@@ -4,6 +4,7 @@ import { isValidDateKey } from "@/lib/date-key"
 import {
   hasApprovedAudioStart,
   hasPlayableAudioSource,
+  isYoutubeTrack,
   type GameTrack,
   type GenreEvidenceSource,
 } from "@/lib/tracks"
@@ -17,6 +18,8 @@ const TRACK_GENRES = ["vpop", "usuk", "rap"] as const
 const DAILY_SOURCE_TYPES = ["official_audio", "lyric_video", "music_video"] as const
 
 const snapshotTrackSchema = z.object({
+  // Schema v1 is intentionally unchanged for old snapshots. Runtime
+  // invariants below only publish/accept YouTube tracks going forward.
   source: z.enum(["spotify", "youtube"]),
   uri: z.string().min(1),
   videoId: z.string().min(1).optional(),
@@ -112,6 +115,9 @@ export function assertDailyTracks(tracks: readonly GameTrack[]) {
   }
 
   for (const track of tracks) {
+    if (!isYoutubeTrack(track)) {
+      throw new DailySnapshotValidationError(`Track ${getDailyTrackId(track)} is not a YouTube source.`)
+    }
     if (!hasPlayableAudioSource(track)) {
       throw new DailySnapshotValidationError(`Track ${getDailyTrackId(track)} has no playable audio source.`)
     }

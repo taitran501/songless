@@ -54,6 +54,12 @@ describe("durable Daily snapshots", () => {
     const audioFirst = zeroWithoutManifest.map((track) => ({ ...track }))
     audioFirst[0].audioFirstManifest = true
     assert.doesNotThrow(() => assertDailyTracks(audioFirst))
+
+    const legacyProvider = dailyTracks.map((track) => ({ ...track }))
+    legacyProvider[0].source = "spotify" as const
+    legacyProvider[0].uri = "spotify:legacy-daily"
+    legacyProvider[0].videoId = undefined
+    assert.throws(() => assertDailyTracks(legacyProvider), /not a YouTube source/i)
   })
 
   it("rejects a tampered checksum", () => {

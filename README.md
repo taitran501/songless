@@ -22,7 +22,7 @@ Guess songs from tiny audio clips, challenge your friends with the same daily se
 ### Guest Playlist Mode
 
 - Jump straight into playlist guessing without signing in.
-- Paste a YouTube playlist or a public Spotify playlist URL to get started.
+- Paste a YouTube playlist URL or ID to get started.
 
 ### Practice by Genre
 
@@ -88,12 +88,8 @@ Create local environment values from the example:
 cp env.example .env.local
 ```
 
-Public Spotify playlists use server-side client credentials. Spotify OAuth and private playlists are not supported.
-
 | Variable | Required | Description |
 | --- | --- | --- |
-| `SPOTIFY_CLIENT_ID` | For public Spotify playlists | Spotify application client ID |
-| `SPOTIFY_CLIENT_SECRET` | For public Spotify playlists | Spotify application client secret |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Preview/Production | Managed Redis REST credentials for Daily snapshots |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Existing Vercel Redis integration | Compatibility names accepted when the Upstash names are not injected |
 | `CRON_SECRET` | Production | Bearer secret for `/api/cron/daily` |
@@ -135,7 +131,6 @@ npm run smoke:youtube -- --title "Blinding Lights" --artists "The Weeknd"
 
 ```text
 app/
-  api/spotify/              Public Spotify playlist route
   api/youtube/              YouTube playlist and search routes
   game/                     Shared audio and lyrics game screen
   playlist/                 Guest and custom playlist loading
@@ -180,10 +175,10 @@ tests/
 
 - YouTube playlist and search support parses YouTube page data and can break if YouTube changes its response structure.
 - YouTube playback depends on video availability, embedding permissions, and browser autoplay rules. A failed source is removed from the local cache and gets one strict title/artist-matched fallback; if that also fails, Skip remains available.
-- Provider requests have bounded timeouts and validate response shape. Spotify preview failures can fall back to verified YouTube, while LRCLIB only caches confirmed no-match results so an outage does not suppress lyrics for a week.
+- Provider requests have bounded timeouts and validate response shape. Legacy preview URLs can fall back to verified YouTube, while LRCLIB only caches confirmed no-match results so an outage does not suppress lyrics for a week.
 - Partial Lyrics Mode uses curated authentic lyric snippets.
 - Adding a new Daily track requires a reviewed audio-start manifest and verified source metadata first. If Redis or `CRON_SECRET` is missing in Production, `npm run check-env` fails the deployment preflight.
 
 ## Deployment
 
-The app is compatible with Vercel. Provision a managed Redis integration for Preview and Production, then set `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (or the `KV_REST_API_*` compatibility names) and `CRON_SECRET`. Production preflight fails when Redis or `CRON_SECRET` is missing; Preview remains deployable for non-Daily review flows but `/api/daily` returns `503` until Redis is provisioned. Run the Daily cron once to prime the current UTC snapshot before opening traffic. Configure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` when public Spotify playlist loading is needed; no Spotify redirect URI is required. User progress remains localStorage; Redis stores only Daily snapshots.
+The app is compatible with Vercel. Provision a managed Redis integration for Preview and Production, then set `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` (or the `KV_REST_API_*` compatibility names) and `CRON_SECRET`. Production preflight fails when Redis or `CRON_SECRET` is missing; Preview remains deployable for non-Daily review flows but `/api/daily` returns `503` until Redis is provisioned. Run the Daily cron once to prime the current UTC snapshot before opening traffic. User progress remains localStorage; Redis stores only Daily snapshots.
