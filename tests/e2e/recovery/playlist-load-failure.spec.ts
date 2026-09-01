@@ -71,3 +71,27 @@ test("@resilience clears a previously loaded playlist when a new load fails", as
   await expect(page.getByTestId("playlist-load-error")).toContainText(/load this playlist/i)
   await expect(page.getByTestId("playlist-loaded")).toHaveCount(0)
 })
+
+test("@resilience does not expose non-playlist tracks as a loaded playlist", async ({ page }) => {
+  await page.addInitScript(({ track }) => {
+    window.localStorage.setItem("game_tracks", JSON.stringify([track]))
+    window.localStorage.setItem("full_playlist_tracks", JSON.stringify([track]))
+    window.localStorage.setItem(
+      "songless_session_v2",
+      JSON.stringify({
+        kind: "genre",
+        playbackMode: "audio",
+        id: "genre-vpop",
+        runId: "genre-vpop-run",
+        genre: "vpop",
+        status: "active",
+        startedAt: "2026-08-27T00:00:00.000Z",
+      })
+    )
+  }, { track: loadedTrack })
+
+  await page.goto("/playlist")
+
+  await expect(page.getByTestId("playlist-loaded")).toHaveCount(0)
+  await expect(page.getByTestId("start-playlist-game")).toHaveCount(0)
+})

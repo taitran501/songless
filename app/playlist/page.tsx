@@ -19,9 +19,35 @@ import {
   readResumableGameSession,
 } from "@/lib/resumable-session"
 import { normalizeTracks, type GameTrack } from "@/lib/tracks"
+import { hasLoadedPlaylistSelection } from "@/lib/playlist-selection"
 import { extractYouTubePlaylistId, isYouTubePlaylistInput } from "@/lib/youtube"
 import { fetchWithTimeout } from "@/lib/request-timeout"
 import { ArrowLeft, Shuffle, Play, Info, Music, Loader2, Youtube, RotateCw, Trash2 } from "lucide-react"
+
+class PlaylistLoadError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message)
+    this.name = "PlaylistLoadError"
+  }
+}
+
+async function readPlaylistLoadError(response: Response, fallback: string) {
+  try {
+    const payload = await response.json()
+    if (payload && typeof payload === "object") {
+      const message = typeof (payload as { error?: unknown }).error === "string"
+        ? (payload as { error: string }).error
+        : fallback
+      const code = typeof (payload as { code?: unknown }).code === "string"
+        ? (payload as { code: string }).code
+        : undefined
+      return new PlaylistLoadError(message, code)
+    }
+  } catch {
+    // The generic message below is safer than exposing a provider HTML error.
+  }
+  return new PlaylistLoadError(fallback)
+}
 
 export default function PlaylistPage() {
   const [playlistInput, setPlaylistInput] = useState("")
@@ -45,6 +71,7 @@ export default function PlaylistPage() {
   const router = useRouter()
   const { tracks, setTracks } = useTracks()
   const modeLabel = "Guest Playlist Mode"
+  const hasLoadedPlaylist = hasLoadedPlaylistSelection(activePlaylistId, tracks)
 
   // Load recent playlists on mount and restore active playlist
   useEffect(() => {
@@ -151,8 +178,7 @@ export default function PlaylistPage() {
         )
 
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to fetch YouTube playlist")
+          throw await readPlaylistLoadError(response, "Failed to fetch YouTube playlist")
         }
 
         const payload = await response.json()
@@ -174,8 +200,7 @@ export default function PlaylistPage() {
         )
 
         if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to fetch playlist")
+          throw await readPlaylistLoadError(response, "Failed to fetch playlist")
         }
 
         const payload = await response.json()
@@ -237,10 +262,18 @@ export default function PlaylistPage() {
       console.error("Error fetching playlist:", error)
       clearLoadedPlaylist()
       const message = error instanceof Error ? error.message : "Error fetching playlist"
-      if (/private|unavailable/i.test(message)) {
-        setError("This playlist is private or unavailable. Check the link and try again.")
-      } else if (/not found|404/i.test(message)) {
+      const code = error instanceof PlaylistLoadError ? error.code : undefined
+      if (code === "spotify_playlist_not_found" || /could not be found|not found|404/i.test(message)) {
         setError("This playlist could not be found. Check the link and try again.")
+      } else if (code === "spotify_playlist_private_or_unavailable" || /private or unavailable/i.test(message)) {
+        setError("This playlist is private or unavailable. Check the link and try again.")
+      } else if (
+        code === "spotify_not_configured" ||
+        code === "spotify_credentials_rejected" ||
+        code === "spotify_provider_unavailable" ||
+        /Spotify denied access|Spotify authorization|Spotify credentials|temporarily unavailable/i.test(message)
+      ) {
+        setError("Spotify is currently unavailable for this deployment. Try again later or use a YouTube playlist.")
       } else if (/network|fetch failed|failed to fetch|timed out|timeout|provider/i.test(message)) {
         setError("Could not reach the playlist provider. Check your connection and try again.")
       } else {
@@ -498,7 +531,7 @@ export default function PlaylistPage() {
           </Card>
         )}
 
-        {tracks.length > 0 && (
+        {hasLoadedPlaylist && (
           <div className="mb-6 animate-fade-in">
             <div
               data-testid="playlist-loaded"
@@ -593,8 +626,10 @@ export default function PlaylistPage() {
 
               <Button 
                 data-testid="start-playlist-game"
-                disabled={tracks.length === 0 || loading}
+                disabled={!hasLoadedPlaylist || loading}
                 onClick={() => {
+                  if (!hasLoadedPlaylist || !activePlaylistId) return
+
                   const resumable = readResumableGameSession(localStorage)
                   if (
                     resumable &&
@@ -637,7 +672,7 @@ export default function PlaylistPage() {
 
                   // 4. Save processed tracks to store & redirect
                   setTracks(processedTracks)
-                  const playlistId = activePlaylistId || "guest-playlist"
+                  const playlistId = activePlaylistId
                   const source = isYouTubePlaylistInput(playlistId) ? "youtube" : "spotify"
                   const session = createGameSession({
                     kind: "playlist",
