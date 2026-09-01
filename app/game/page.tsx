@@ -678,7 +678,7 @@ export default function GamePage() {
       setModalContent(null)
       setIsTrackTransitioning(true)
       await waitForNextPaint()
-      await stopRoundPlayback()
+      await playback.disposeCurrentPlayback()
 
       if (currentIndex < tracks.length - 1) {
         setCurrentIndex(currentIndex + 1)
