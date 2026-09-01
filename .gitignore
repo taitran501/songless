@@ -59,6 +59,5 @@ debug-*.md
 
 # Local dev documentation
 /DEPLOY_GUIDE.md
-/SPOTIFY_OAUTH_UPDATE.md
 /test-flow.md
 /audio-start-report.md
