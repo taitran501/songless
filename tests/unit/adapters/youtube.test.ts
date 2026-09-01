@@ -89,6 +89,7 @@ describe("YouTube parser", () => {
       "PLyoutubeplaylist1234567"
     )
     assert.equal(isYouTubePlaylistInput("PLyoutubeplaylist1234567"), true)
+    assert.equal(isYouTubePlaylistInput("not-a-playlist-url"), false)
     assert.equal(isYouTubePlaylistInput("https://evil-youtube.com/playlist?list=PLyoutubeplaylist1234567"), false)
     assert.equal(
       isYouTubePlaylistInput(["https://open.", "spotify.com/playlist/legacy123"].join("")),

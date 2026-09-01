@@ -82,6 +82,10 @@ export function extractYouTubePlaylistId(input: string): string | null {
 export function isYouTubePlaylistInput(input: string): boolean {
   const trimmed = input.trim()
   if (YOUTUBE_PLAYLIST_ID_PATTERN.test(trimmed)) return true
+  // A bare identifier is accepted by the API for backwards compatibility,
+  // but the UI requires a recognizable YouTube playlist prefix so arbitrary
+  // provider IDs are not sent over the network.
+  if (/^[a-zA-Z0-9_-]{18,40}$/.test(trimmed)) return false
   return Boolean(extractYouTubePlaylistId(trimmed))
 }
 
