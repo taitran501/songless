@@ -48,7 +48,7 @@ async function mockYouTubeIframe(page: Page) {
       status: 200,
       contentType: "application/javascript",
       body: `(() => {
-        window.__ytEvents = { created: [], destroyed: [] };
+        window.__ytEvents = { created: [], destroyed: [], createdDialogCounts: [] };
         class MockPlayer {
           constructor(id, config) {
             this.config = config;
@@ -58,12 +58,16 @@ async function mockYouTubeIframe(page: Page) {
             iframe.title = config.videoId + " answer leak";
             this.mount?.appendChild(iframe);
             window.__ytEvents.created.push(config.videoId);
+            window.__ytEvents.createdDialogCounts.push({
+              videoId: config.videoId,
+              dialogCount: document.querySelectorAll('[role="dialog"]').length,
+            });
             setTimeout(() => config.events?.onReady?.({ target: this }), 0);
           }
           stopVideo() {}
           destroy() {
             window.__ytEvents.destroyed.push(this.videoId);
-            setTimeout(() => this.mount?.replaceChildren(), 0);
+            setTimeout(() => this.mount?.replaceChildren(), 25);
           }
           cueVideoById(videoId) { this.videoId = videoId; }
           unMute() {}
@@ -81,7 +85,13 @@ async function mockYouTubeIframe(page: Page) {
 
 test("@resilience replaces the YouTube player when advancing to the next track", async ({ page }) => {
   const pageErrors: string[] = []
+  const consoleMessages: string[] = []
   page.on("pageerror", (error) => pageErrors.push(error.message))
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") {
+      consoleMessages.push(message.text())
+    }
+  })
   await mockYouTubeIframe(page)
   await seedGame(page, transitionTracks, session)
   await page.goto("/game")
@@ -100,6 +110,8 @@ test("@resilience replaces the YouTube player when advancing to the next track",
   await expect(page.getByRole("heading", { name: /SOLVED/i })).toBeVisible()
   await page.getByRole("button", { name: "NEXT SONG" }).click()
 
+  await expect(page.getByTestId("game-result-modal")).toHaveCount(0)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
   await expect(page.getByText("Track 2 of 2")).toBeVisible()
   await expect(page.getByTestId("audio-play-button")).toBeEnabled({ timeout: 5_000 })
   await expect
@@ -108,7 +120,67 @@ test("@resilience replaces the YouTube player when advancing to the next track",
   await expect
     .poll(() => page.evaluate(() => (window as any).__ytEvents?.destroyed ?? []))
     .toContain("transition-first")
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__ytEvents?.createdDialogCounts?.find(
+            (entry: { videoId: string }) => entry.videoId === "transition-second"
+          )?.dialogCount ?? null
+      )
+    )
+    .toBe(0)
   expect(pageErrors.join("\n")).not.toMatch(/removeChild|Application error/i)
+  expect(consoleMessages.join("\n")).not.toMatch(/not attached to the DOM/i)
+})
+
+test("@resilience closes a failed result before advancing to the next track", async ({ page }) => {
+  const pageErrors: string[] = []
+  const consoleMessages: string[] = []
+  page.on("pageerror", (error) => pageErrors.push(error.message))
+  page.on("console", (message) => {
+    if (message.type() === "warning" || message.type() === "error") {
+      consoleMessages.push(message.text())
+    }
+  })
+  await mockYouTubeIframe(page)
+  await seedGame(page, transitionTracks, {
+    ...session,
+    id: "audio-failed-transition-fixture",
+    runId: "audio-failed-transition-fixture-run",
+  })
+  await page.goto("/game")
+
+  await expect(page.getByTestId("audio-play-button")).toBeEnabled()
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await page.getByPlaceholder(/Know the song\?/).fill(`wrong answer ${attempt}`)
+    await page.getByRole("button", { name: "SUBMIT GUESS" }).click()
+  }
+  await expect(page.getByRole("heading", { name: /TRACK FAILED/i })).toBeVisible()
+  await page.getByRole("button", { name: "NEXT SONG" }).click()
+
+  await expect(page.getByTestId("game-result-modal")).toHaveCount(0)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(page.getByText("Track 2 of 2")).toBeVisible()
+  await expect(page.getByTestId("audio-play-button")).toBeEnabled({ timeout: 5_000 })
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ytEvents?.created ?? []))
+    .toContain("transition-second")
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ytEvents?.destroyed ?? []))
+    .toContain("transition-first")
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__ytEvents?.createdDialogCounts?.find(
+            (entry: { videoId: string }) => entry.videoId === "transition-second"
+          )?.dialogCount ?? null
+      )
+    )
+    .toBe(0)
+  expect(pageErrors.join("\n")).not.toMatch(/removeChild|Application error/i)
+  expect(consoleMessages.join("\n")).not.toMatch(/not attached to the DOM/i)
 })
 
 test("@resilience exposes Skip when YouTube player initialization times out", async ({ page }) => {
